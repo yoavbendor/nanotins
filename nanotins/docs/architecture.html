@@ -76,7 +76,7 @@
   <a href="#wirespec">1 · wire_spec</a>
   <a href="#soa">2 · the SoA</a>
   <a href="#dag">3 · the DAG / FSM</a>
-  <a href="#bulk">4 · bulk &amp; GPU</a>
+  <a href="#bulk">4 · bulk decode</a>
   <a href="#pipeline">End-to-end pipeline</a>
   <h2>Extend it</h2>
   <a href="#recipe">Add a parser (recipe)</a>
@@ -92,41 +92,41 @@
 
 <h1>nanotins architecture</h1>
 <p class="lede">A reusable C++20 library for turning raw <b>pcap/pcapng</b> captures into columnar
-<b>Arrow</b> tables — on the CPU or the GPU, from one declaration per protocol. This guide explains the three
+<b>Arrow</b> tables, from one declaration per protocol. This guide explains the three
 ideas that make that work (<b>wire_spec</b>, the <b>SoA</b>, the <b>DAG</b>) and gives you a step-by-step,
 checkpointed recipe for adding a new parser.</p>
 
 <div class="note key"><b>The one idea to take away.</b> You describe a protocol header <i>once</i>, as an
 explicit-offset <code>WireSpec</code>. That single declaration then drives <i>everything</i> downstream —
-the host read, the GPU read, the columnar store, and the Arrow schema — and a small declarative
+the read, the columnar store, and the Arrow schema — and a small declarative
 <b>graph</b> says how one header leads to the next. Adding a protocol is writing one spec and one graph
-edge; the host path, the GPU path, the columns, and the tables all come for free.</p>
+edge; the read path, the columns, and the tables all come for free.</p>
 
 <!-- ============================================================ WHAT -->
 <h2 id="what">What nanotins is (and isn't)</h2>
 <p>nanotins answers a narrow question well: <i>given bytes on the wire, produce columnar tables, fast and
-identically on CPU and GPU.</i> It does the <b>framing &amp; field extraction</b> — scan the capture into
+deterministically.</i> It does the <b>framing &amp; field extraction</b> — scan the capture into
 packets, walk each packet's protocol layers, and lay each layer's fields out as columns. It knows nothing
 about Lance, files, or storage; it emits <a class="link" href="https://arrow.apache.org/">nanoarrow</a>
 tables that any backend (Lance, Parquet, Arrow IPC) can persist.</p>
 <div class="grid">
   <div class="card"><h4>Does</h4><p>pcap/pcapng block scanning · L2/L3/L4 + gPTP decode · explicit wire
-   layouts · SoA columns · Arrow schemas · a scheduler-agnostic bulk path that runs on a CPU pool or an
-   NVIDIA GPU unchanged.</p></div>
+   layouts · SoA columns · Arrow schemas · a scheduler-agnostic bulk path that runs serially or on a CPU
+   thread pool, unchanged.</p></div>
   <div class="card"><h4>Doesn't</h4><p>No Lance/file I/O (that's <code>nanolance</code>). No stateful frame
    reassembly or numeric reconstruction in the core — those are <a class="link" href="#layers">higher
-   layers</a>. No heuristics: dispatch is exact-key only, so CPU == GPU == bulk by construction.</p></div>
-  <div class="card"><h4>Why it's unusual</h4><p>The same <code>NANOTINS_HD</code> (host+device) reader and
-   walk run inside a GPU kernel <i>and</i> on the host — there is one source of truth for the parse, not a
-   CPU copy and a hand-ported CUDA copy.</p></div>
+   layers</a>. No heuristics: dispatch is exact-key only, so serial == bulk by construction.</p></div>
+  <div class="card"><h4>Why it's unusual</h4><p>The reader and walk are <code>NANOTINS_HD</code>
+   (host+device) and allocation-free — one source of truth for the parse, with no STL in the hot path. That
+   keeps the door open for a GPU executor layer later without a hand-ported copy.</p></div>
 </div>
 
 <!-- ============================================================ STACK -->
-<h2 id="stack">The three libraries</h2>
-<p>nanotins is the middle of a three-layer stack. Each layer depends only on the one to its left, so each
+<h2 id="stack">The two libraries</h2>
+<p>nanotins is the top of a two-layer stack. Each layer depends only on the one to its left, so each
 can be vendored on its own.</p>
 <div class="fig">
-<svg viewBox="0 0 860 230" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+<svg viewBox="0 0 600 230" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="#6cb6ff"/>
@@ -146,18 +146,13 @@ can be vendored on its own.</p>
   <text x="430" y="128" fill="#d7dbe4" font-size="11.5" text-anchor="middle">spec_dag · bulk_for_each</text>
   <text x="430" y="150" fill="#9aa3b2" font-size="11" text-anchor="middle">+ soatins, header-only stdexec</text>
   <text x="430" y="173" fill="#7d8694" font-size="10.5" text-anchor="middle">header-only · device-safe</text>
-  <!-- gputins -->
-  <rect x="620" y="60" width="220" height="110" rx="12" fill="#14101f" stroke="#c5a3ff"/>
-  <text x="730" y="86" fill="#c5a3ff" font-size="17" font-weight="700" text-anchor="middle">gputins</text>
-  <text x="730" y="110" fill="#9aa3b2" font-size="12.5" text-anchor="middle">CUDA / nvexec executors</text>
-  <text x="730" y="130" fill="#d7dbe4" font-size="11.5" text-anchor="middle">device_buffer · GPU decode</text>
-  <text x="730" y="148" fill="#9aa3b2" font-size="11" text-anchor="middle">behind NANOTINS_ENABLE_CUDA</text>
   <line x1="245" y1="115" x2="315" y2="115" stroke="#6cb6ff" stroke-width="2" marker-end="url(#arrow)"/>
-  <line x1="545" y1="115" x2="615" y2="115" stroke="#6cb6ff" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="430" y="218" fill="#7d8694" font-size="12" text-anchor="middle">consumers: nanolance (Lance writer/reader) · examples/pcapng2lance (the converter)</text>
+  <text x="280" y="218" fill="#7d8694" font-size="12" text-anchor="middle">consumers: nanolance (Lance writer/reader) · examples/pcapng2lance (the converter)</text>
 </svg>
 <div class="cap">Left→right dependency. <code>soatins</code> is the describe-a-struct reflection core;
-<code>nanotins</code> adds packets + the wire_spec/DAG; <code>gputins</code> isolates the CUDA dependency.</div>
+<code>nanotins</code> adds packets + the wire_spec/DAG. (A GPU/CUDA executor layer is developed separately
+and not part of this repo yet; the parsers are already <code>NANOTINS_HD</code> device-callable, so it
+slots on top later.)</div>
 </div>
 
 <!-- ============================================================ ONE SPEC -->
@@ -181,7 +176,7 @@ read the <i>same</i> spec, they can never drift apart.</p>
 
     <rect x="580" y="20" width="200" height="58" rx="10" fill="#14101f" stroke="#c5a3ff"/>
     <text x="680" y="44" fill="#c5a3ff" font-size="13.5" font-weight="700" text-anchor="middle">Device read</text>
-    <text x="680" y="63" fill="#9aa3b2" text-anchor="middle">read_field&lt;F&gt;(p) · GPU</text>
+    <text x="680" y="63" fill="#9aa3b2" text-anchor="middle">read_field&lt;F&gt;(p) · NANOTINS_HD</text>
 
     <rect x="40" y="226" width="200" height="58" rx="10" fill="#161922" stroke="#ffd479"/>
     <text x="140" y="250" fill="#ffd479" font-size="13.5" font-weight="700" text-anchor="middle">SoA columns</text>
@@ -255,7 +250,7 @@ a field may even span two bytes of a big-endian word (IPv6 <code>flow_label:20</
 <h3>The reader is device-safe by construction</h3>
 <p><code>read_field&lt;F&gt;(p)</code> is a tiny byte-indexed loop — no <code>std::ranges</code>, no misaligned
 word loads, no STL — marked <code>NANOTINS_HD</code> (<code>__host__ __device__</code>). So the
-<i>identical</i> read runs on the host and inside a CUDA kernel. <code>struct_view</code> is just the
+<i>identical</i> read runs on the host and inside a device kernel. <code>struct_view</code> is just the
 ergonomic named-access wrapper over it.</p>
 
 <h3>Composing specs with <code>embed&lt;&gt;</code></h3>
@@ -263,7 +258,7 @@ ergonomic named-access wrapper over it.</p>
 <code>Timestamp</code> and a <code>PortIdentity</code>). <code>embed&lt;Prefix, Offset, SubSpec&gt;</code>
 splices a sub-spec's fields at an offset, prefixing their names — so a doubled record stays unambiguous
 (<code>clock_identity</code> vs <code>requesting_clock_identity</code>). It is purely compile-time: the spec
-still flattens to one flat field list, so the readers/SoA/GPU paths are unchanged.</p>
+still flattens to one flat field list, so the reader/SoA/Arrow paths are unchanged.</p>
 <pre><code><span class="c">// the 10-byte PTP timestamp, reused everywhere:</span>
 <span class="k">using</span> <span class="t">TimestampSpec</span> = <span class="t">WireSpec</span>&lt;<span class="t">named_field</span>&lt;<span class="k">decltype</span>(<span class="s">"seconds_msb"</span>_fld), <span class="n">0</span>, u16, big&gt;, …&gt;;
 
@@ -385,18 +380,18 @@ body). VLAN self-loops to handle stacked QinQ tags.</div>
 <h3>The walk — one loop, two faces</h3>
 <p><code>walk&lt;Graph&gt;(root, p, size, visit)</code> is a bounded, allocation-free loop: parse the current
 node's spec, call <code>visit(node_id, offset)</code>, advance, follow the edge, repeat. It's
-<code>NANOTINS_HD</code>, so the same loop runs on the host and inside a GPU kernel — the visitor decides
+<code>NANOTINS_HD</code>, so the same loop runs on the host and inside a device kernel — the visitor decides
 what "emit" means (count rows, or scatter columns). Because both the count pass and the scatter pass use the
 same walk, they can never disagree.</p>
 <div class="note key"><b>Reject heuristics — this is a hard rule.</b> Edges match an <i>exact</i> key (an
 ethertype, a protocol number, a message type). There is no "looks like…" guessing. That is what guarantees
-<b>CPU == GPU == bulk</b> bit-for-bit and what makes adding a protocol <i>additive</i> (a new edge can't
+<b>serial == bulk</b> bit-for-bit and what makes adding a protocol <i>additive</i> (a new edge can't
 change how existing packets parse). A duplicate key is a build-time error, not a silent ambiguity.</div>
 
 <!-- ============================================================ BULK -->
-<h2 id="bulk">4 · bulk &amp; GPU — count → scan → scatter</h2>
+<h2 id="bulk">4 · bulk decode — count → scan → scatter</h2>
 <p>A packet emits a <i>variable</i> number of rows per table (0 or 1 Ethernet, 0–N VLANs, 0/1 UDP…). The
-data-parallel pattern for that is three passes, identical on CPU and GPU (<code>dag_bulk.hpp</code>):</p>
+data-parallel pattern for that is three passes (<code>dag_bulk.hpp</code>):</p>
 <div class="fig">
 <svg viewBox="0 0 820 150" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,sans-serif" font-size="12.5">
   <defs><marker id="a4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9aa3b2"/></marker></defs>
@@ -414,11 +409,12 @@ data-parallel pattern for that is three passes, identical on CPU and GPU (<code>
   <text x="410" y="130" fill="#7d8694" font-size="11.5" text-anchor="middle">every write index = this packet's prefix-summed base + its own emit order → no two packets collide</text>
 </svg>
 </div>
-<p>On the CPU the scan is a host loop and the passes run through <code>bulk_for_each</code> on an
-<code>exec::static_thread_pool</code>; on the GPU the scan becomes a <code>thrust::exclusive_scan</code> and
-the very same kernels run via an <code>nvexec</code> stream. The scatter sink is a plain POD of pointers
-(trivially copyable, so a GPU kernel can capture it), and the parse is the same <code>walk</code>. Result:
-the output tables are byte-identical whether produced serially, on a thread pool, or on the GPU.</p>
+<p>The scan is a host loop and the passes run through <code>bulk_for_each</code> — serially or on an
+<code>exec::static_thread_pool</code>. The scatter sink is a plain POD of pointers (trivially copyable —
+which is also what would let a device kernel capture it), and the parse is the same <code>walk</code>.
+Result: the output tables are byte-identical whether produced serially or on a thread pool. <span
+class="small">(Because the sink and kernels are POD + <code>NANOTINS_HD</code>, the same three passes are
+what a future GPU executor would drive via a device scan — no change to this code.)</span></p>
 
 <!-- ============================================================ PIPELINE -->
 <h2 id="pipeline">End-to-end pipeline (the pcapng2lance example)</h2>
@@ -429,7 +425,7 @@ the output tables are byte-identical whether produced serially, on a thread pool
    │
    ▼  --decode-l2l3
  walk&lt;L2L3Graph&gt; per packet  ──►  per-node dag_tables&lt;Graph&gt;     <span class="c">(eth/vlan/ipv4/ipv6/tcp/udp/gptp/…)</span>
-   │                                   serial · CPU pool · GPU — identical output
+   │                                   serial · CPU pool — identical output
    ▼
  to_arrow per node  ──►  one Lance table per PDU type</code></pre>
 <p>The <code>packet_id</code> column ties every PDU row back to its L1 packet (the join key). Each per-node
@@ -486,18 +482,18 @@ test that proves it before you move on.</p>
 </div></div>
 
 <div class="step"><div class="num">5</div><div class="body">
-  <h3>GPU — nothing to write, just verify</h3>
-  <p>The GPU path (<code>gputins/dag_decode_gpu.hpp</code>) is <b>generic over the graph</b> — it reuses the
+  <h3>Bulk — nothing to write, just verify</h3>
+  <p>The bulk path (<code>dag_bulk.hpp</code>) is <b>generic over the graph</b> — it reuses the
   same <code>count_packet_dag</code> / <code>scatter_packet_dag</code> kernels, so your new node needs <i>no
-  GPU code</i>.</p>
-  <div class="chk"><b>Checkpoint D — determinism.</b> Run <code>dag_gpu_equiv_bench --bench</code> on a CUDA
-  build: it asserts <b>serial == bulk == gpu</b> bit-for-bit and prints throughput. On a CPU-only box the
-  serial==bulk half still runs.</div>
+  bulk code</i>.</p>
+  <div class="chk"><b>Checkpoint D — determinism.</b> <code>test_dag_bulk</code> asserts <b>serial == bulk</b>
+  bit-for-bit (count→scan→scatter equals the sequential decode). (The same harness gains a <code>== gpu</code>
+  leg when the GPU executor layer is re-introduced.)</div>
 </div></div>
 
 <div class="note good"><b>That's the whole loop.</b> One spec, one node, one edge, one table line — and four
 checkpoints that each isolate exactly one kind of mistake (read math → routing → output equality → executor
-determinism). You never touch column code, Arrow code, or GPU code.</div>
+determinism). You never touch column code or Arrow code.</div>
 
 <!-- ============================================================ WORKED -->
 <h2 id="worked">Worked example: a new L4 protocol (SCTP)</h2>
@@ -520,9 +516,9 @@ determinism). You never touch column code, Arrow code, or GPU code.</div>
 <span class="k">return</span> <span class="f">match_edges</span>&lt;G, <span class="t">edge</span>&lt;<span class="n">6</span>, <span class="t">TcpNode</span>&gt;, <span class="t">edge</span>&lt;<span class="n">17</span>, <span class="t">UdpNode</span>&gt;, <span class="t">edge</span>&lt;<span class="n">132</span>, <span class="t">SctpNode</span>&gt;&gt;(proto);
 
 <span class="c">// 4) driver: write_one("_sctp.lance", std::get&lt;node_id_v&lt;SctpNode, G&gt;&gt;(dag_pdus_));</span></code></pre>
-<p>Total: ~12 lines across three files, plus tests. No column, Arrow, or GPU changes. The
+<p>Total: ~12 lines across three files, plus tests. No column or Arrow changes. The
 <code>sctp.lance</code> table — columns <code>packet_id, src_port, dst_port, verification_tag, checksum</code>
-— appears on CPU and GPU, byte-identical.</p>
+— is byte-identical whether decoded serially or in bulk.</p>
 <p class="small">A protocol with sub-types (like gPTP's message bodies) is the same recipe one level deeper:
 the node's <code>next</code> dispatches on a discriminator field into a second set of body nodes — see
 <code>GptpNode</code> → <code>ptp_msgtype_dispatch</code> → <code>{PtpTimestampBody, PtpTsPortBody,
@@ -536,18 +532,17 @@ dependency lives depends on <i>what</i> it is:</p>
 <table>
   <tr><th>Your parser needs…</th><th>Put it…</th><th>Because</th></tr>
   <tr><td>just more wire fields / a new layer</td><td>in nanotins (spec + node), header-only</td>
-    <td>stays device-safe; runs on GPU for free</td></tr>
+    <td>stays device-safe; bulk-parallel for free</td></tr>
   <tr><td>cross-packet state (reassembly, PTP offset correlation, sensor frame assembly)</td>
     <td>a <b>higher layer</b> above nanotins (host-only), consuming the per-node tables by
     <code>packet_id</code></td><td>stateful logic isn't data-parallel; it must not pollute the device walk</td></tr>
   <tr><td>heavy numeric reconstruction (floating-point, calibration)</td><td>a separate compute stage on the
-    columnar output</td><td>FP determinism CPU↔GPU is its own battle; isolate it</td></tr>
+    columnar output</td><td>floating-point determinism is its own battle; isolate it</td></tr>
   <tr><td>a third-party lib (decompression, crypto…)</td><td>behind an interface in a consumer (e.g. the
-    driver), never in the <code>NANOTINS_HD</code> path</td><td>keeps nanotins vendorable + GPU-buildable</td></tr>
+    driver), never in the <code>NANOTINS_HD</code> path</td><td>keeps nanotins vendorable + device-safe</td></tr>
 </table>
 <p>Mechanically: a new header-only dep is a <code>target_link_libraries(nanotins_protocols INTERFACE …)</code>
-or a FetchContent block in <code>nanotins/CMakeLists.txt</code>; a CUDA-only dep goes in
-<code>gputins</code> behind <code>NANOTINS_ENABLE_CUDA</code>; a host-only dep belongs to the consumer.</p>
+or a FetchContent block in <code>nanotins/CMakeLists.txt</code>; a host-only dep belongs to the consumer.</p>
 
 <!-- ============================================================ LAYERS -->
 <h2 id="layers">The three layers (where things belong)</h2>
@@ -559,7 +554,7 @@ or a FetchContent block in <code>nanotins/CMakeLists.txt</code>; a CUDA-only dep
    packets (PTP sync↔follow-up, fragmentation, sensor frames). Host-only, consumes layer-1 tables. Lives
    <i>above</i> nanotins.</p></div>
   <div class="card"><span class="tag">layer 3</span><h4>Numeric reconstruction</h4><p>Turn raw fields into
-   physical values. Separate compute; this is where CPU/GPU floating-point determinism is fought, kept away
+   physical values. Separate compute; this is where floating-point determinism is fought, kept away
    from the parse.</p></div>
 </div>
 <div class="note"><b>Rule of thumb:</b> if it can be a pure function of one PDU's bytes, it's a layer-1 spec
@@ -576,8 +571,8 @@ about, it's layer 3.</div>
     — visited sequence + walk_packet parity</td><td>any box</td></tr>
   <tr><td>C</td><td>the emitted table is correct &amp; byte-identical</td><td><code>test_pdu_table_interop</code>
     + a tshark diff (<code>test_nlance2table_tshark_*.py</code>)</td><td>any box (tshark optional)</td></tr>
-  <tr><td>D</td><td>serial == bulk == gpu, bit-for-bit</td><td><code>dag_gpu_equiv_bench --bench</code></td>
-    <td>CUDA box for the gpu leg</td></tr>
+  <tr><td>D</td><td>serial == bulk, bit-for-bit</td><td><code>test_dag_bulk.cpp</code></td>
+    <td>any box</td></tr>
 </table>
 <p class="small">All are wired into CTest under the <code>smoke</code> / <code>interop</code> labels:
 <code>ctest -L smoke</code> after every change; the tshark/pylance interop tests skip cleanly (exit 77) when
@@ -596,11 +591,8 @@ host-side table assembly (which <i>does</i> use <code>std::vector</code>) is sep
     bytes inside its big-endian word.</li>
   <li><b>Names are the schema.</b> A field's tag is its column name; an <code>embed&lt;&gt;</code> prefix
     disambiguates repeated sub-records. Pick names you'd want in a Lance table.</li>
-  <li><b>The GPU file is "written-not-compiled" on a CPU box</b> — <code>dag_decode_gpu.hpp</code> compiles
-    only under <code>NANOTINS_ENABLE_CUDA</code>; verify it on the CUDA host with checkpoint D. Generic over
-    the graph, so new protocols need no edits there.</li>
   <li><b>g++ fold gotcha:</b> don't nest a lambda inside a fold-comma expression (it ICEs older g++); factor
-    per-index work into a helper, as <code>dag_bulk.hpp</code> / <code>dag_decode_gpu.hpp</code> do.</li>
+    per-index work into a helper, as <code>dag_bulk.hpp</code> does.</li>
 </ul>
 
 <!-- ============================================================ FILES -->
@@ -617,14 +609,11 @@ host-side table assembly (which <i>does</i> use <code>std::vector</code>) is sep
   <tr><td><code>nanotins/spec_dag.hpp</code></td><td><code>graph</code>, <code>edge</code>,
     <code>match_edges</code>, <code>walk</code>, and the L2/L3/L4 + gPTP nodes &amp; <code>L2L3Graph</code></td></tr>
   <tr><td><code>nanotins/dag_decode.hpp</code> · <code>dag_bulk.hpp</code></td><td>per-node
-    <code>dag_tables</code> + serial decode · the count→scan→scatter bulk path (CPU/GPU)</td></tr>
-  <tr><td><code>gputins/wire_spec_gpu.hpp</code> · <code>dag_decode_gpu.hpp</code></td><td>GPU single-spec
-    parse · GPU graph decode (behind <code>NANOTINS_ENABLE_CUDA</code>)</td></tr>
-  <tr><td><code>nanotins/docs/GPU_BULK_INTEGRATION.md</code></td><td>how to build &amp; verify the CUDA path</td></tr>
+    <code>dag_tables</code> + serial decode · the count→scan→scatter bulk path</td></tr>
 </table>
 
 <footer>
-  nanotins — describe the wire once, parse it anywhere (host or GPU), get columns for free. ·
+  nanotins — describe the wire once, parse it anywhere (host or device), get columns for free. ·
   See also <a class="link" href="nanotins.html">nanotins.html</a> (the reflection/overlay primer) and the
   <a class="link" href="../README.md">README</a>.
 </footer>

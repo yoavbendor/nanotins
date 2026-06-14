@@ -64,7 +64,7 @@
   <h2>Parsing</h2>
   <a href="#pipeline">The two-phase pipeline</a>
   <a href="#walk">The L2/L3/L4 walk</a>
-  <a href="#bulk">Bulk &amp; GPU-ready</a>
+  <a href="#bulk">Bulk decode</a>
   <h2>Extend it</h2>
   <a href="#gptp">Worked example: gPTP</a>
   <a href="#validate">Validate vs tshark</a>
@@ -84,7 +84,7 @@ nanotins hands you a zero-copy overlay, a flattened column list, an SoA store, a
 <p>
   <span class="pill">C++20</span><span class="pill">header-mostly</span>
   <span class="pill">deps: nanoarrow + boost::describe</span><span class="pill">no Lance dependency</span>
-  <span class="pill">CPU bulk today, GPU-ready</span>
+  <span class="pill">CPU bulk; device-ready</span>
 </p>
 
 <h2 id="why">Why nanotins</h2>
@@ -95,10 +95,10 @@ single declaration. Write the struct that matches the wire; the same declaration
 sync, because the struct <em>is</em> the schema.</p>
 
 <div class="grid">
-  <div class="card"><h4>Overlay</h4><p>Cast raw bytes to a typed view with no copy and no allocation — valid in a CUDA kernel.</p></div>
+  <div class="card"><h4>Overlay</h4><p>Cast raw bytes to a typed view with no copy and no allocation — valid in a device kernel.</p></div>
   <div class="card"><h4>Self-describing</h4><p>One <code>BOOST_DESCRIBE_STRUCT</code> line exposes the fields to compile-time reflection.</p></div>
   <div class="card"><h4>Columnar for free</h4><p>That reflection becomes an Arrow schema + an SoA store + a nanoarrow array.</p></div>
-  <div class="card"><h4>Bulk &amp; portable</h4><p>The parse runs through a scheduler-agnostic <code>bulk_for_each</code>: CPU pool now, GPU later.</p></div>
+  <div class="card"><h4>Bulk &amp; portable</h4><p>The parse runs through a scheduler-agnostic <code>bulk_for_each</code>: serial or CPU pool now, a GPU executor layer later.</p></div>
 </div>
 
 <h2 id="describe">Describe a struct once</h2>
@@ -217,15 +217,15 @@ so <code>walk_packet</code> emits TCP/UDP only when <code>frag_offset == 0</code
 still produce an <code>ipv4</code> row (every fragment carries <code>protocol</code>); they just have no L4
 row. This matches Wireshark with reassembly off — see <a href="#validate">Validate vs tshark</a>.</div>
 
-<h2 id="bulk">Bulk &amp; GPU-ready</h2>
+<h2 id="bulk">Bulk decode</h2>
 <p>The parallel parse is a scheduler-agnostic <code>bulk_for_each(sched, num_tasks, n, kernel)</code> — a
-partitioned <code>stdexec</code> <code>ex::bulk</code>. Today the scheduler is an
-<code>exec::static_thread_pool</code>; on a CUDA host it becomes an <code>nvexec::stream_context</code> and
-the <em>same</em> kernel runs on the GPU. The kernel must be device-safe: POD captures, no allocation — which
-nanotins' overlay/store already are.</p>
+partitioned <code>stdexec</code> <code>ex::bulk</code>. The scheduler is an
+<code>exec::static_thread_pool</code> (serial or CPU pool). The kernel is device-safe — POD captures, no
+allocation, which nanotins' overlay/store already are — so the same bulk path can target a GPU executor
+layer later without changes.</p>
 <p>Decoding a frame emits a <em>variable</em> number of PDUs (0..N VLAN tags, maybe one IPv4, maybe one
-UDP), so the bulk path uses the canonical GPU pattern for variable output — <strong>count → prefix-sum →
-scatter</strong>:</p>
+UDP), so the bulk path uses the canonical data-parallel pattern for variable output — <strong>count →
+prefix-sum → scatter</strong>:</p>
 <pre><code><span class="c">// pass 1 (bulk): how many of each PDU does each packet emit?</span>
 bulk_for_each(sched, tasks, n, [=](std::size_t i){ counts[i] = count_packet(link[i], pkt(i)); });
 <span class="c">// scan: exclusive prefix-sum per PDU type -&gt; exact per-packet write offsets + totals</span>
@@ -234,8 +234,8 @@ bulk_for_each(sched, tasks, n, [=](std::size_t i){ counts[i] = count_packet(link
 bulk_for_each(sched, tasks, n, [=](std::size_t i){ scatter_packet(pid(i), link[i], pkt(i), base[i], sink); });</code></pre>
 <div class="note good">Because the scatter writes are disjoint and ordered by packet index, the output
 tables are <strong>byte-identical</strong> to the serial decode — the bulk path is verified against the
-serial one on every test capture. On a GPU the scan becomes a <code>thrust::exclusive_scan</code>; the two
-kernels are unchanged.</div>
+serial one on every test capture. (A GPU executor would swap the host scan for a device scan; the two
+kernels are unchanged.)</div>
 
 <h2 id="gptp">Worked example: adding gPTP</h2>
 <p>Here is the entire recipe for teaching nanotins a new protocol — generalized Precision Time Protocol

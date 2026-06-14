@@ -1,14 +1,15 @@
-# nanotins — a layered C++20 packet-parsing stack, three header-only libraries that each vendor on their own:
+# nanotins — a layered C++20 packet-parsing stack, two header-only libraries that each vendor on their own:
 #
 #   soatins   the reusable "describe a struct once -> SoA + Arrow" reflection nucleus (nanoarrow + boost).
 #   nanotins  pcap/pcapng + L2/L3/L4 parsing, the wire_spec/DAG core, and a scheduler-agnostic bulk path
 #             (depends on soatins + stdexec).
-#   gputins   the CUDA (nvexec) executors, header-only and guarded by NANOTINS_ENABLE_CUDA
-#             (depends on nanotins; inert on a CPU-only build).
+#
+# (A GPU/CUDA executor layer, gputins, is developed separately and not part of this repo yet — the parsers
+#  are already device-callable via NANOTINS_HD, so it slots back in on top without touching the core.)
 #
 # This top-level project exists so a consumer can pull the whole stack with a single add_subdirectory():
 #
-#   add_subdirectory(extern/nanotins)             # creates soatins::core, nanotins, gputins
+#   add_subdirectory(extern/nanotins)             # creates soatins::core, nanotins
 #   target_link_libraries(my_app PRIVATE nanotins)
 #
 # Each subdirectory is also independently configurable on its own (PROJECT_IS_TOP_LEVEL), and pulls its own
@@ -26,8 +27,7 @@ if(NANOTINS_SUITE_BUILD_TESTS)
     set(NANOTINS_BUILD_TESTS ON CACHE BOOL "" FORCE)
 endif()
 
-# Dependency order: soatins -> nanotins -> gputins. Each guards against re-adding a layer that already
-# exists as a target, so the order here is the single source of truth.
+# Dependency order: soatins -> nanotins. Each guards against re-adding a layer that already exists as a
+# target, so the order here is the single source of truth.
 add_subdirectory(soatins)
 add_subdirectory(nanotins)
-add_subdirectory(gputins)

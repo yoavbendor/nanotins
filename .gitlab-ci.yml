@@ -1,0 +1,37 @@
+# GitLab CI/CD — configure the whole suite and run the smoke tests on Linux. The libraries are header-only
+# and pull their own dependencies (nanoarrow, header-only boost, stdexec) via FetchContent, so the job is
+# self-contained. This mirrors .github/workflows/ci.yml, fanning out over gcc and clang via a matrix.
+
+stages:
+  - test
+
+# Run on the default branch and on merge requests, matching the push/pull_request triggers of the GitHub job.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.build-and-test:
+  stage: test
+  image: ubuntu:24.04
+  variables:
+    # Keep FetchContent checkouts inside the project dir so they can be cached between runs.
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends cmake ninja-build git ca-certificates ${CXX_PKG}
+  script:
+    - cmake -S . -B build -G Ninja -DNANOTINS_SUITE_BUILD_TESTS=ON
+    - cmake --build build
+    - ctest --test-dir build -L smoke --output-on-failure
+
+build-and-test:
+  extends: .build-and-test
+  parallel:
+    matrix:
+      - CC: gcc-13
+        CXX: g++-13
+        CXX_PKG: g++-13
+      - CC: clang-18
+        CXX: clang++-18
+        CXX_PKG: clang-18

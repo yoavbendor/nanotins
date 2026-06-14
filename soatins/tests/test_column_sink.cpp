@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // Phase 1: column_sink<T,N> auto-flush. push() N rows -> one flush of a full chunk; the partial tail
 // drains on finish(). Proves: flush fires exactly at each N-th row (not before), the flushed chunks carry
 // the right rows in order, clear() lets storage be reused across flushes, and finish() drains the remainder.

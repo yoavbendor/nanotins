@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // Phase 0b: zero-/minimal-copy to_arrow for the fixed soa<T,N>. The bulk per-column fill must produce a
 // record batch byte-for-byte identical to the dynamic soa<T>'s per-row append path. We compare the two
 // ArrowArrays' column data buffers directly (memcmp), plus spot-check the host values.

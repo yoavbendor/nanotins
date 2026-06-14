@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // CPU bulk smoke: drive nanotins::bulk_for_each with an exec::static_thread_pool scheduler over a
 // partitioned sum kernel. Proves stdexec is wired into the build and the scheduler-agnostic bulk works
 // on this host; on a CUDA host the same call takes an nvexec scheduler.

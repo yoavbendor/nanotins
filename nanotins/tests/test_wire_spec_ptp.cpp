@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M4b: PTPv2 via embed<> spec composition. Two guarantees:
 //   1. PtpHeaderSpec reads the 34-byte common header byte-identically to the existing protocols::Gptp
 //      overlay (same column names) — so a PTP DAG emits a Gptp-compatible table.

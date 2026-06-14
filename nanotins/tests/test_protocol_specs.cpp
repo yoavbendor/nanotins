@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M4a: the backbone protocol_specs (Ethernet/VLAN/IPv4/IPv6/TCP/UDP) must read every field identically to
 // the existing protocols:: be<>/bits<> overlay on the same bytes — the guarantee that a wire_spec DAG
 // will emit byte-identical Lance tables. Cross-checks struct_view<Spec> vs the reinterpreted struct over

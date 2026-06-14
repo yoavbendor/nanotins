@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // A declarative, device-safe DAG/FSM for protocol dispatch — the spec-driven replacement for the

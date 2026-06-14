@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // De-risk gate: prove boost::describe -> std adapter compiles and yields the right names/count.
 #include "soatins/describe.hpp"
 

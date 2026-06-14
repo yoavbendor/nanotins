@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M3a: prove the L2/L3 wire structs overlay real packet bytes correctly — endianness, byte-straddling
 // bitfields (IPv4 flags/frag, IPv6 version/tc/flow, TCP data_offset/flags), and that the reflection
 // core expands each struct into the expected flat column list.

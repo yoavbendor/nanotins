@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // wire_spec Milestone 2 — the IPv4 header (20 bytes, bit-fields + scalars), the first wire PDU with
 // named_bit_field (version:4/ihl:4, dscp:6/ecn:2, flags:3/frag_offset:13) and an IHL-driven extent.
 //   T1 bit-field oracle : struct_view / device read_field == hand-decoded == soatins bits<> overlay

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // Scheduler-agnostic bulk L2/L3/L4 decode of one window of packets, the canonical GPU pattern for a

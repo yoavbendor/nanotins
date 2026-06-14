@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // Phase 0a: the fixed-capacity SoA (soa<T,N>) + the non-owning soa_view<T>.
 // Proves: (1) append() fills via the same reflection fold as the dynamic soa<T>, column-for-column
 // (including the be<> byte-swap); (2) the occupied counter / full() fire exactly at N; (3) clear()

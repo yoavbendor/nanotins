@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // Bitfields packed into a (possibly big-endian) word. Native C++ bitfields can't portably overlay

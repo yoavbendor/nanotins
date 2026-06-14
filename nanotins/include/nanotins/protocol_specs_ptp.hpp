@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // PTPv2 / gPTP (IEEE 1588 / 802.1AS) as wire_specs — the first real use of embed<> spec composition.

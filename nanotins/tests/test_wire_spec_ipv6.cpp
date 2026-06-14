@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // wire_spec Milestone 3 — the IPv6 header (40 bytes): the hardest bit-field (version:4 /
 // traffic_class:8 / flow_label:20 packed in one big-endian u32, crossing byte boundaries), fixed-size
 // byte-array fields (the 16-byte addresses), and next_header — the field that decides the next PDU (the

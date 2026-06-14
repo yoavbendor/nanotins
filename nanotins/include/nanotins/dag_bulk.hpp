@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // The bulk/GPU shape of the DAG decode: count -> exclusive prefix-sum -> scatter, the same data-parallel

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // Hand-built pcap / pcapng fixtures shared by the seam test and the driver test. Pure byte assembly

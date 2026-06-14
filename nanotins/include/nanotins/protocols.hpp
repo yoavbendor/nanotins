@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // L2/L3 protocol headers as packed, standard-layout wire structs (the M3 payoff of the nanotins

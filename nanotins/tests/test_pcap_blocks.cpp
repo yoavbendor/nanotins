@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // Seam acceptance test (targets pcap_blocks.hpp ONLY, so it re-runs unchanged against a future
 // nanotins implementation). Hand-built pcap + pcapng fixtures, incl. a byte-swapped pcapng for
 // endianness, plus external-offset verification (payload bytes must live at payload_off..+size).

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // DAG-driven columnar decode: walk a packet through a spec_dag graph and scatter each emitted PDU's fields

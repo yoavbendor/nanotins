@@ -3,7 +3,8 @@
 # be vendored independently. nanotins adds: the pcap/pcapng block scanner (pcapblocks), the L2/L3/L4 wire
 # structs + layered decode (protocols), the gPTP extension, and the scheduler-agnostic bulk_for_each
 # (nanotins) over stdexec. Depends on soatins + header-only stdexec. Knows nothing about Lance or CUDA
-# (the CUDA executors live one layer up in `gputins`).
+# (a GPU/CUDA executor layer is developed separately and not part of this repo; the parsers stay NANOTINS_HD
+# device-callable so it can slot on top later).
 #
 # Consumed in-tree via add_subdirectory() (the pcapng2lance example does this). Also configures
 # standalone: it pulls in soatins (../soatins) and FetchContent's stdexec when they aren't already targets.

@@ -6,7 +6,7 @@ protocol header once with explicit byte offsets (`WireSpec<named_field<>, named_
 and get, for free:
 
 - a zero-copy **host read** overlay on raw bytes (endianness & bit layout handled by the field types),
-- an equivalent **GPU device read** (device-callable, produces the same columns),
+- an equivalent **device-callable read** (`NANOTINS_HD`, produces the same columns),
 - a flattened **column list** (bitfields expanded to named scalar columns),
 - an **SoA** store (`soa<T>`) + a **nanoarrow** schema/array (`arrow_schema<T>()` / `to_arrow<T>()`).
 
@@ -16,8 +16,8 @@ and get, for free:
 
 The **wire_spec** subsystem (files: `wire_spec.hpp`, `wire_spec_soa.hpp`) replaces hand-written
 protocol overlays and gives the **spec_dag** (`spec_dag.hpp`, `dag_decode.hpp`) — a declarative DAG/FSM
-dispatcher — a single source of truth. One walk of the DAG decodes on both host (CPU bulk path via
-`dag_decode_bulk`) and device (GPU via `dag_decode_gpu`). The L2/L3 protocol specs live in
+dispatcher — a single source of truth. One walk of the DAG decodes serially or as a CPU bulk pass (via
+`dag_decode_bulk`), bit-identically. The L2/L3 protocol specs live in
 `protocol_specs.hpp`; PTPv2/gPTP extension specs in `protocol_specs_ptp.hpp`. All DAG-emitted PDU tables are
 byte-identical to the older hand-written `walk_packet` decoder (verified by the
 `test_pdu_table_interop`/`test_pdu_table_lance_interop` suite).
@@ -25,21 +25,21 @@ byte-identical to the older hand-written `walk_packet` decoder (verified by the
 The soatins nucleus (describe→SoA→Arrow) is its own library — **[`soatins`](../soatins)** (namespace `soatins`,
 include prefix `soatins/`) — vendorable on its own (depends only on **nanoarrow + header-only boost**,
 knows nothing about packets). `nanotins` builds on it, adding pcap/pcapng scanning, the wire_spec + spec_dag
-wire-parsing core, the gPTP extension, and scheduler-agnostic `bulk_for_each` (over **stdexec**). The CUDA
-(nvexec) executors are split off again into **[`gputins`](../gputins)** so the GPU dependency is isolated.
-All three are **header-only** — the Phase-B parsers are device-callable (`NANOTINS_HD`), so they live inline
-in the headers where device code can see them. None of them know anything about Lance — they produce nanoarrow
-tables that any backend (Lance, Parquet, Arrow IPC) can persist.
+wire-parsing core, the gPTP extension, and scheduler-agnostic `bulk_for_each` (over **stdexec**). Both are
+**header-only** — the Phase-B parsers are device-callable (`NANOTINS_HD`), so they live inline in the headers
+where device code can see them. Neither knows anything about Lance — they produce nanoarrow tables that any
+backend (Lance, Parquet, Arrow IPC) can persist. (A GPU/CUDA executor layer, `gputins`, is developed
+separately and not part of this repo; because the parsers are already `NANOTINS_HD`, it slots on top later.)
 
 ```
-soatins  →  nanotins  →  gputins        (each depends only on the one to its left)
-reflect     pcap + protocols + bulk      CUDA/nvexec executors (inert without NANOTINS_ENABLE_CUDA)
+soatins  →  nanotins        (each depends only on the one to its left)
+reflect     pcap + protocols + bulk
 ```
 
 ## Read this first
 
 **[docs/nanotins.html](docs/nanotins.html)** — the teaching document: the ideas, the two-phase
-parsing pipeline, the CPU/GPU bulk path, and a complete worked example of **extending the library with a
+parsing pipeline, the CPU bulk path, and a complete worked example of **extending the library with a
 new protocol (gPTP / IEEE 802.1AS)**. Open it in a browser.
 
 ## Layout
@@ -53,7 +53,6 @@ include/nanotins/            wire_spec: wire_spec.hpp, wire_spec_soa.hpp (declar
                              bulk: bulk.hpp (scheduler-agnostic bulk_for_each / serial_for_each)
                              pcap: pcap_blocks.hpp (scan_blocks / scan_window / parse_epb — header-only)
                              gptp.hpp (PTPv2 extension, legacy overlay)
-../gputins/include/gputins/  gpu.hpp, wire_spec_gpu.hpp, dag_decode_gpu.hpp (CUDA/nvexec, behind NANOTINS_ENABLE_CUDA)
 tests/                       spec_dag / dag_decode / dag_bulk / wire_spec / protocol_specs
                              protocols / pcap_blocks / bulk / gptp  (reflect / soa_scatter live in soatins)
 docs/nanotins.html           the guide
@@ -67,7 +66,6 @@ docs/nanotins.html           the guide
 | `nanotins::pcap` | INTERFACE | pcap/pcapng block scanner + per-block parse (header-only) |
 | `nanotins::protocols` | INTERFACE | wire_spec + spec_dag core + L2/L3/L4 protocol specs + serial/bulk decode + gPTP + bulk_for_each |
 | `nanotins` | INTERFACE | umbrella (pcap + protocols, pulls soatins) |
-| `gputins` | INTERFACE | CUDA (nvexec) executors; pulls nanotins; inert without NANOTINS_ENABLE_CUDA |
 
 ```cmake
 add_subdirectory(soatins)                              # the reflection nucleus, on its own…

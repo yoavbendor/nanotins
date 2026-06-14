@@ -1,0 +1,17 @@
+nanotins
+Copyright 2026 Yoav Bendor
+
+Licensed under the Apache License, Version 2.0 (the "License"); see the LICENSE
+file. You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This product depends on third-party software with their own licenses (all
+permissive and Apache-2.0-compatible). These dependencies are fetched at build
+time via CMake FetchContent and are NOT redistributed in this repository:
+
+  - Apache Arrow nanoarrow  - Apache License 2.0
+  - NVIDIA stdexec          - Apache License 2.0
+  - Boost (describe, mp11, config, assert, preprocessor) - Boost Software License 1.0
+
+See THIRD-PARTY-LICENSES.md for the full list and links.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M5a: the spec-driven DAG must reproduce walk_packet's traversal exactly — same PDU sequence, same byte
 // offsets — over well-formed packets, with the same L4 gating (IPv4 fragment => no L4). This is the
 // determinism/parity oracle: if the graph and the hand-written switch ever disagree, the Lance tables

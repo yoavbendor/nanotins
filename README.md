@@ -71,4 +71,6 @@ nothing about Lance.
 
 ## License
 
-[MIT](LICENSE).
+[Apache-2.0](LICENSE) — see [NOTICE](NOTICE) and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for
+dependency attributions. (Chosen to align with the Arrow/nanoarrow + stdexec ecosystem and for its explicit
+patent grant.)

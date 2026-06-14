@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // Layered L2/L3 decode (the CPU reference; the same overlay+store shape a CUDA kernel would run). Given

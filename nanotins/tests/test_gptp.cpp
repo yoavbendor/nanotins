@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // gPTP extension gate: the worked "add a protocol" example must work end-to-end with nothing but the
 // nanotins core — overlay raw gPTP bytes, then drive the SAME be<>/bits<>/SoA/arrow machinery the
 // built-in protocols use to produce a nanoarrow table. Proves a user can add a protocol with one struct

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // The SoA derivative of a WireSpec: a fixed-capacity, columnar store filled directly from raw PDU

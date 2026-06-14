@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // wire_spec Milestone 1 — the UDP header (4x uint16, big-endian), the simplest possible wire PDU.
 // Validates the promise chain end to end, all on CPU (the "device" reader runs here too and must match):
 //   T1 one spec, two faces : struct_view == read_field (device-style) == be<> overlay == hand-decoded

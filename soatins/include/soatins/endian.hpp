@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // Wire byte order attached to the field *type*. `be<T>`/`le<T>` store raw wire bytes in an

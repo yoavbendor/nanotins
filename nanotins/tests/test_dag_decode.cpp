@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M5b: the DAG-driven columnar decode. Walking the graph must scatter each PDU's fields into its node's
 // SoA columns with byte-identical values to struct_view, link each row to the right packet_id, accumulate
 // across packets, and produce per-node row counts equal to the existing count_packet (== walk_packet). So

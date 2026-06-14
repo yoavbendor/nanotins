@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // The L2/L3/L4 backbone as wire_spec wire specs — the single home for the Ethernet / VLAN / IPv4 / IPv6 /

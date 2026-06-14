@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // M5c: the DAG's bulk (count -> prefix-sum -> scatter) path must produce byte-identical per-node tables to
 // the sequential append decode — and identically whether the scatter runs serially or on a thread pool.
 // This is the CPU proof of the determinism the GPU path needs: every write index is a pure function of the

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 // soa device-view: filling a soa<T> via raw()+scatter() (the bulk/GPU path) must produce identical
 // columns to soa<T>::store() (the serial path), including be<>/bits<> conversions. This is the primitive
 // that lets a bulk kernel fill any described struct's SoA with no hand-written column list.

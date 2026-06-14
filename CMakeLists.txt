@@ -31,3 +31,10 @@ endif()
 # target, so the order here is the single source of truth.
 add_subdirectory(soatins)
 add_subdirectory(nanotins)
+
+# Examples (parser-only showcases, e.g. pcapng2json). On by default for a standalone suite build; off when
+# embedded in a larger project as a subdirectory (that project builds its own examples).
+option(NANOTINS_BUILD_EXAMPLES "Build nanotins examples" ${PROJECT_IS_TOP_LEVEL})
+if(NANOTINS_BUILD_EXAMPLES)
+    add_subdirectory(examples/pcapng2json)
+endif()

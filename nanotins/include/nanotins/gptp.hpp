@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // gPTP / PTPv2 (IEEE 802.1AS / IEEE 1588) common message header — a *worked example of extending

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Yoav Bendor
+
 #pragma once
 
 // column_sink<T, N>: the auto-flushing front end of a fixed-capacity soa<T, N>. push() a row at a time;

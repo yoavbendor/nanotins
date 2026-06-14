@@ -3,7 +3,7 @@
 # zero-copy overlay on raw bytes, (b) a flattened column list, (c) an SoA store (+ a device-fillable
 # soa_ptrs view), and (d) a nanoarrow ArrowSchema/ArrowArray. Depends ONLY on nanoarrow + header-only
 # boost (describe/mp11). It knows nothing about packets, stdexec, CUDA, or Lance — those live one layer up
-# (nanotins / gputins). Namespace: `soatins`. Include prefix: `soatins/`.
+# (nanotins). Namespace: `soatins`. Include prefix: `soatins/`.
 #
 # Consumed in-tree via add_subdirectory() (nanotins does this when soatins_core isn't already a target).
 # Standalone: if nanoarrow isn't already a target, it is FetchContent'd.

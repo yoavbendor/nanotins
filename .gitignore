@@ -1,0 +1,15 @@
+# build trees
+build/
+build-*/
+out/
+cmake-build-*/
+
+# FetchContent / CMake dep checkouts
+_deps/
+*.cmake.stamp
+
+# editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

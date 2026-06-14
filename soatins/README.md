@@ -54,4 +54,5 @@ target_link_libraries(my_tool PRIVATE soatins::core)
 ```
 
 Used by [`nanotins`](../nanotins) (the pcap/pcapng + L2/L3/L4 parser) and, through it, the
-[`pcapng2lance`](../examples/pcapng2lance) reference converter.
+[`pcapng2lance`](https://github.com/yoavbendor/nanolance/tree/main/examples/pcapng2lance) reference
+converter in the sister [nanolance](https://github.com/yoavbendor/nanolance) project.

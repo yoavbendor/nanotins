@@ -76,6 +76,6 @@ add_subdirectory(nanotins)                             # …or the whole packet 
 target_link_libraries(my_app  PRIVATE nanotins)
 ```
 
-Consumed in-tree by [`examples/pcapng2lance`](../examples/pcapng2lance) (the reference pcapng→Lance
-converter), whose test suite — including the `tshark` field-alignment cross-checks — is this library's
-golden.
+Consumed by [`examples/pcapng2lance`](https://github.com/yoavbendor/nanolance/tree/main/examples/pcapng2lance)
+(the reference pcapng→Lance converter) in the sister [nanolance](https://github.com/yoavbendor/nanolance)
+project, whose test suite — including the `tshark` field-alignment cross-checks — is this library's golden.

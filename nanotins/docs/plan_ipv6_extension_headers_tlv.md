@@ -14,6 +14,45 @@ anything.
 
 ---
 
+## 0.0 Background the code doesn't spell out (read this — it defines the terms used below)
+
+You have the **nanotins** and **nanolance** source in context, but a few terms and intentions in this plan
+come from project history rather than the code. They are defined here once:
+
+- **"GPU transition" / "(future) GPU" / "GPU re-introduction".** nanotins currently ships **two** header-only
+  libraries (`soatins`, `nanotins`). A CUDA/nvexec executor layer called **`gputins`** was built but is **not
+  in this repo right now** — it is developed separately and intended to be layered back on later (see this
+  repo's top-level `README.md` and `the_case_for_learning_from_vbvx.md`). That is why every parsing primitive
+  is **`NANOTINS_HD`** (a macro marking a function callable on both host and GPU device — see
+  `soatins/portability.hpp`) and why this work must stay **C++20 + device-safe**: so the future `gputins`
+  layer can compile these exact headers under clang-cuda/nvcc unchanged. Wherever this plan says "GPU
+  transition", "device-safe", or "(future) gpu", that is the only thing it means.
+- **vbvx / `SRv6TlvIterator` / `validate_srh_bounds()`.** **vbvx** is an *external* C++ library analysed in
+  `the_case_for_learning_from_vbvx.md`. Its `SRv6TlvIterator` is a bounds-checked, allocation-free cursor
+  over `[type][len][value]` records; `validate_srh_bounds()` is its up-front "check all the lengths once,
+  then trust them" gate. **We borrow the pattern, not the code** — you never need vbvx itself; everything
+  required is in this plan.
+- **"serial == bulk" (and why it matters).** nanotins decodes a batch of packets two ways that must produce
+  **byte-identical** output: a simple sequential pass (`dag_decode.hpp`) and a data-parallel bulk pass
+  (`dag_bulk.hpp`, using *count → exclusive prefix-sum → scatter*). The bulk pass is also the exact template
+  the future GPU executor follows, so "serial == bulk == (future) gpu" just means "one decode, three
+  executors, identical bytes". Any new table must pass this equality.
+- **Per-PDU tables keyed by `packet_id`.** nanotins emits each protocol layer as its **own** table
+  (`ethernet`, `vlan`, `ipv4`, `tcp`, …), **one row per occurrence**, and every row carries the
+  originating packet's `packet_id` so rows can be joined back to the packet. A layer that can occur 0..N
+  times per packet (like a VLAN tag, or — in this plan — an extension header or a segment) simply produces
+  0..N rows in its table. This is the idiom you will extend; it is already how the `vlan` table works.
+- **`fixed_size_binary` and "fixed-width SoA".** The SoA → Arrow conversion (see `wire_spec_soa.hpp` and
+  soatins `arrow_glue.hpp`) currently emits only **fixed-width scalar columns** (integers) and
+  **`fixed_size_binary(N)`** (a column of fixed-N byte blobs — e.g. a 16-byte IPv6 address). It has **no**
+  Arrow `List<>`/nested-type support today. (You can verify this in those files.) This is exactly why §3.1
+  models variable-length data as extra tables instead of `List<>` columns.
+- **The tshark oracle + "skips 77".** The strongest correctness check compares our decoded fields against
+  **tshark** (the Wireshark CLI) on real captures. Those tests (in nanolance) return CTest exit code **77**,
+  which CTest treats as "skip", when tshark isn't installed — so CI without tshark stays green.
+
+---
+
 ## 0. Hard invariants (read first — violating any of these fails review)
 
 1. **C++20 only.** No C++23 features anywhere in this work. (Reason: the GPU re-introduction compiles these

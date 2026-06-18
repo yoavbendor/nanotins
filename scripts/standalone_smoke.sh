@@ -36,6 +36,7 @@ run_test() {  # name source [extra g++ args...]
 run_test tlv_cursor      test_tlv_cursor.cpp
 run_test ipv4_options    test_ipv4_options.cpp
 run_test ipv6_children   test_ipv6_children.cpp
+run_test someip          test_someip.cpp
 
 # --- bulk determinism tests (only when stdexec + nanoarrow + boost headers are provided) -------------
 if [[ -n "${STDEXEC_INC:-}" && -n "${NANOARROW_INC:-}" && -n "${BOOST_INC:-}" ]]; then

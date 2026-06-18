@@ -53,7 +53,10 @@ if(NOT TARGET nanoarrow_static)
     FetchContent_Declare(nanoarrow
         GIT_REPOSITORY https://github.com/apache/arrow-nanoarrow.git
         GIT_TAG ffe61d3cd2d02da9e60cfc405cd6c50c512f64b9
-        GIT_SHALLOW TRUE)
+        # GIT_SHALLOW must stay FALSE here: GIT_TAG is a pinned commit SHA, and a shallow clone only fetches
+        # the default-branch tip, so the SHA isn't in the fetched history -> "reference is not a tree". A full
+        # clone carries the history that contains the pinned commit. (Branch/tag-name pins can use shallow.)
+        GIT_SHALLOW FALSE)
     FetchContent_Populate(nanoarrow)
     add_subdirectory(${nanoarrow_SOURCE_DIR} ${nanoarrow_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()

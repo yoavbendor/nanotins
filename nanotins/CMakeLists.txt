@@ -158,4 +158,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_ipv6_children PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_children COMMAND $<TARGET_FILE:nanotins_ipv6_children>)
     set_tests_properties(nanotins_ipv6_children PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P5: child tables bulk path determinism — serial == bulk == thread pool on a 100k batch.
+    add_executable(nanotins_ipv6_children_bulk tests/test_ipv6_children_bulk.cpp)
+    target_link_libraries(nanotins_ipv6_children_bulk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_children_bulk COMMAND $<TARGET_FILE:nanotins_ipv6_children_bulk>)
+    set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke")
 endif()

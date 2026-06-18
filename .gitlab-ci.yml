@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# GitLab CI/CD for the nanotins suite. Two complementary jobs:
+#
+#   standalone   builds + runs the dependency-light, header-only tests (incl. the IPv4 options + IPv6
+#                children parsers) with nothing but g++ and the include trees. No network / FetchContent —
+#                so it stays green even on a runner that can't reach GitHub. Fast first-signal.
+#   cmake-smoke  the canonical build: configure the whole suite (FetchContent pulls soatins' nanoarrow +
+#                boost and nanotins' stdexec), build, and run the full `smoke` label via ctest — this is the
+#                same path as the GitHub `ci` workflow and covers the Arrow + bulk determinism tests.
+#
+# Both run on every push and merge request.
+
+stages:
+  - quick
+  - full
+
+default:
+  image: gcc:13
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq cmake ninja-build
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+# Fast, no-network signal: the header-only parsing core (cursor + IPv4/IPv6 child tables, serial).
+standalone:
+  stage: quick
+  script:
+    - bash scripts/standalone_smoke.sh
+
+# Full suite via CMake + ctest (matches .github/workflows/ci.yml), including the Arrow and bulk paths.
+cmake-smoke:
+  stage: full
+  script:
+    - cmake -S . -B build -G Ninja -DNANOTINS_SUITE_BUILD_TESTS=ON
+    - cmake --build build
+    - ctest --test-dir build -L smoke --output-on-failure
+  artifacts:
+    when: on_failure
+    paths:
+      - build/Testing/
+    expire_in: 1 week

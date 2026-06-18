@@ -152,4 +152,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_ipv6_ext_walk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_ext_walk COMMAND $<TARGET_FILE:nanotins_ipv6_ext_walk>)
     set_tests_properties(nanotins_ipv6_ext_walk PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P4: variable child tables (SRv6 segments + Hop-by-Hop/Dest-Opts/SRH TLV options), serial.
+    add_executable(nanotins_ipv6_children tests/test_ipv6_children.cpp)
+    target_link_libraries(nanotins_ipv6_children PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_children COMMAND $<TARGET_FILE:nanotins_ipv6_children>)
+    set_tests_properties(nanotins_ipv6_children PROPERTIES LABELS "smoke")
 endif()

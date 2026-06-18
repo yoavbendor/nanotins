@@ -78,6 +78,10 @@ void put_fragment(Frame& f, std::uint8_t next_header, std::uint16_t frag_off, st
     f.u16(static_cast<std::uint16_t>((frag_off << 3) | (more & 1)));
     f.u32(id);
 }
+// Authentication Header (next=51): length (payload_len+2)*4. payload_len=4 -> 24 bytes (12 fixed + 12 ICV).
+void put_ah(Frame& f, std::uint8_t next_header) {
+    f.u8(next_header); f.u8(4); f.u16(0); f.u32(0x1000 /*spi*/); f.u32(7 /*seq*/); f.fill(12, 0xEE /*ICV*/);
+}
 
 // node-id shortcuts
 constexpr int kIp6 = node_id_v<Ipv6Node, L2L3Graph>;
@@ -86,6 +90,7 @@ constexpr int kUdp = node_id_v<UdpNode, L2L3Graph>;
 constexpr int kHbh = node_id_v<Ipv6HopByHopNode, L2L3Graph>;
 constexpr int kRtg = node_id_v<Ipv6RoutingNode, L2L3Graph>;
 constexpr int kFrg = node_id_v<Ipv6FragmentNode, L2L3Graph>;
+constexpr int kAh = node_id_v<Ipv6AhNode, L2L3Graph>;
 
 template <int Node>
 std::size_t rows(const dag_tables<L2L3Graph>& t) { return std::get<Node>(t).size(); }
@@ -170,6 +175,41 @@ int main() {
         CHECK(rows<kUdp>(t) == 0);
     }
 
-    std::printf("ipv6_ext_walk: ok (chain walk + L4 fix: hbh/frag/srh/chain/malformed)\n");
+    // G. Continuation fragment (frag_offset != 0): the bytes after the fragment header are payload data,
+    //    NOT an L4 header — must NOT emit a (bogus) L4 row. The fragment row itself is still emitted.
+    {
+        Frame f; put_eth(f); put_ipv6(f, 44);
+        put_fragment(f, 17, /*frag_off=*/185, /*more=*/1, 0xABCD);  // non-zero offset
+        f.fill(20, 0x77);  // fragment payload data (not a UDP header)
+        dag_tables<L2L3Graph> t;
+        dag_decode_packet<L2L3Graph>(0, f.b.data(), f.b.size(), t, kEthRoot);
+        CHECK(rows<kFrg>(t) == 1);                       // fragment row present
+        CHECK(std::get<kFrg>(t).column<2>()[0] == 185);  // frag_offset
+        CHECK(rows<kUdp>(t) == 0);                        // NO bogus L4 on a continuation fragment
+        CHECK(rows<kTcp>(t) == 0);
+    }
+
+    // H. Authentication Header (next=51) -> UDP: AH is not encrypted, so L4 follows; advance must use the
+    //    (payload_len+2)*4 length so UDP is found at the right offset.
+    {
+        Frame f; put_eth(f); put_ipv6(f, 51); put_ah(f, 17); put_udp(f, 100, 200);
+        dag_tables<L2L3Graph> t;
+        dag_decode_packet<L2L3Graph>(0, f.b.data(), f.b.size(), t, kEthRoot);
+        CHECK(rows<kAh>(t) == 1);
+        CHECK(rows<kUdp>(t) == 1);
+        CHECK(std::get<kUdp>(t).column<1>()[0] == 200);  // dst_port (L4 reached past AH's 24 bytes)
+    }
+
+    // I. ESP (next=50): encrypted — the walk must stop cleanly with no L4 and no crash.
+    {
+        Frame f; put_eth(f); put_ipv6(f, 50); f.fill(24, 0x99);  // opaque ESP bytes
+        dag_tables<L2L3Graph> t;
+        dag_decode_packet<L2L3Graph>(0, f.b.data(), f.b.size(), t, kEthRoot);
+        CHECK(rows<kIp6>(t) == 1);
+        CHECK(rows<kUdp>(t) == 0);
+        CHECK(rows<kTcp>(t) == 0);
+    }
+
+    std::printf("ipv6_ext_walk: ok (chain walk + L4 fix: hbh/frag/srh/chain/malformed/cont-frag/ah/esp)\n");
     return 0;
 }

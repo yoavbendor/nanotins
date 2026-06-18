@@ -281,7 +281,15 @@ struct Ipv6FragmentNode {
     static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return 8; }
     template <class G>
     static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
-        return ip6_next_dispatch<G>(struct_view<Ipv6FragmentSpec>(p)("next_header"_fld));
+        struct_view<Ipv6FragmentSpec> v(p);
+        // Only the first fragment (offset 0) carries the L4 header; a continuation fragment (offset != 0)
+        // is fragment payload data, so dispatching L4 there would overlay garbage. Stop instead — mirrors
+        // the IPv4 fragmentation gate (Ipv4Node) and tshark's "L4 only on the first fragment". The fragment
+        // row itself is still emitted (the visit happened before next()).
+        if (v("frag_offset"_fld) != 0) {
+            return -1;
+        }
+        return ip6_next_dispatch<G>(v("next_header"_fld));
     }
 };
 

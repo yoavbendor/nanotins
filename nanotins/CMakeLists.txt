@@ -164,4 +164,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_ipv6_children_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_children_bulk COMMAND $<TARGET_FILE:nanotins_ipv6_children_bulk>)
     set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 1: the 16-byte message header wire_spec + DAG node (UDP/TCP -> SOME/IP on the SD port).
+    add_executable(nanotins_someip tests/test_someip.cpp)
+    target_link_libraries(nanotins_someip PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip COMMAND $<TARGET_FILE:nanotins_someip>)
+    set_tests_properties(nanotins_someip PROPERTIES LABELS "smoke")
 endif()

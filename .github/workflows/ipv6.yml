@@ -49,13 +49,7 @@ jobs:
 
       # Build only the IPv6 suite's test targets (the libraries are header-only) to keep the gate fast.
       - name: Build (ipv6 suite)
-        run: >
-          cmake --build build
-          --target nanotins_wire_spec_ipv6
-                   nanotins_tlv_cursor
-                   nanotins_ipv6_ext_walk
-                   nanotins_ipv6_children
-                   nanotins_ipv6_children_bulk
+        run: cmake --build build --target nanotins_wire_spec_ipv6 nanotins_tlv_cursor nanotins_ipv6_ext_walk nanotins_ipv6_children nanotins_ipv6_children_bulk
 
       - name: Test (ipv6 label)
         run: ctest --test-dir build -L ipv6 --output-on-failure

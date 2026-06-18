@@ -29,10 +29,16 @@ struct tlv_record {
     const std::uint8_t* value;  // -> packet bytes, length bytes (nullptr for a 1-byte pad)
 };
 
-// Padding convention for the TLV space being walked.
-//   ipv6_options : RFC 8200 4.2 — type 0 is Pad1 (a lone byte, no length/value); type 1 is PadN.
-//   raw          : every record is [type][len][value]; no 1-byte special case.
-enum class tlv_pad : std::uint8_t { ipv6_options, raw };
+// Padding / length convention for the TLV space being walked.
+//   ipv6_options : RFC 8200 4.2 — type 0 is Pad1 (a lone byte, no length/value); type 1 is PadN. The length
+//                  octet is the *value* length (data only, excluding the 2-byte type+len preamble).
+//   ipv4_options : RFC 791 3.1 — type 0 is EOOL (End of Option List: a lone byte that *terminates* the
+//                  walk; trailing header padding after it is ignored); type 1 is NOP (a lone byte). For
+//                  every other option the length octet counts the *whole* option (type + length + data), so
+//                  a record advances by `len` bytes (value length = len - 2). This is the one place IPv4 and
+//                  IPv6 option length semantics differ.
+//   raw          : every record is [type][len][value]; no 1-byte special case (len is the value length).
+enum class tlv_pad : std::uint8_t { ipv6_options, ipv4_options, raw };
 
 // Bounds-checked, allocation-free cursor over [type][len][value] records in [p, end). Trivially copyable.
 struct tlv_cursor {
@@ -50,6 +56,28 @@ struct tlv_cursor {
         if (pad == tlv_pad::ipv6_options && t == 0) {  // Pad1: a single byte, no length/value
             out = tlv_record{0, 0, nullptr};
             p += 1;
+            return true;
+        }
+        if (pad == tlv_pad::ipv4_options) {
+            if (t == 0) {  // EOOL: end of option list — emit the marker, then exhaust (ignore trailing pad)
+                out = tlv_record{0, 0, nullptr};
+                p = end;
+                return true;
+            }
+            if (t == 1) {  // NOP: a single byte, no length/value
+                out = tlv_record{1, 0, nullptr};
+                p += 1;
+                return true;
+            }
+            if (p + 2 > end) {  // need type + length
+                return false;
+            }
+            const std::uint8_t wlen = p[1];  // counts the WHOLE option: type + length + value
+            if (wlen < 2 || p + std::size_t{wlen} > end) {  // self-inclusive len must be >= 2 and fit
+                return false;
+            }
+            out = tlv_record{t, static_cast<std::uint8_t>(wlen - 2), p + 2};  // expose the value length
+            p += wlen;
             return true;
         }
         if (p + 2 > end) {  // need type + length

@@ -165,6 +165,19 @@ if(NANOTINS_BUILD_TESTS)
     add_test(NAME nanotins_ipv6_children_bulk COMMAND $<TARGET_FILE:nanotins_ipv6_children_bulk>)
     set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke")
 
+    # IPv4 options P4: variable child table (one row per IPv4 option) via the tlv_cursor ipv4_options mode,
+    # serial. NOP/EOOL markers, self-inclusive length semantics, EOOL termination, malformed-IHL clamp.
+    add_executable(nanotins_ipv4_options tests/test_ipv4_options.cpp)
+    target_link_libraries(nanotins_ipv4_options PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv4_options COMMAND $<TARGET_FILE:nanotins_ipv4_options>)
+    set_tests_properties(nanotins_ipv4_options PROPERTIES LABELS "smoke")
+
+    # IPv4 options P5: option table bulk path determinism — serial == bulk == thread pool on a 100k batch.
+    add_executable(nanotins_ipv4_options_bulk tests/test_ipv4_options_bulk.cpp)
+    target_link_libraries(nanotins_ipv4_options_bulk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv4_options_bulk COMMAND $<TARGET_FILE:nanotins_ipv4_options_bulk>)
+    set_tests_properties(nanotins_ipv4_options_bulk PROPERTIES LABELS "smoke")
+
     # SOME/IP Phase 1: the 16-byte message header wire_spec + DAG node (UDP/TCP -> SOME/IP on the SD port).
     add_executable(nanotins_someip tests/test_someip.cpp)
     target_link_libraries(nanotins_someip PRIVATE nanotins_protocols)

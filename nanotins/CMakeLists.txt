@@ -140,4 +140,28 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_dag_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_dag_bulk COMMAND $<TARGET_FILE:nanotins_dag_bulk>)
     set_tests_properties(nanotins_dag_bulk PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P1: the tlv_cursor / repeat_at primitive (Pad1/PadN, truncation, fuzz, bounds).
+    add_executable(nanotins_tlv_cursor tests/test_tlv_cursor.cpp)
+    target_link_libraries(nanotins_tlv_cursor PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_tlv_cursor COMMAND $<TARGET_FILE:nanotins_tlv_cursor>)
+    set_tests_properties(nanotins_tlv_cursor PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P2: extension-header chain walk + the L4 correctness fix (hbh/frag/srh/chain/malformed).
+    add_executable(nanotins_ipv6_ext_walk tests/test_ipv6_ext_walk.cpp)
+    target_link_libraries(nanotins_ipv6_ext_walk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_ext_walk COMMAND $<TARGET_FILE:nanotins_ipv6_ext_walk>)
+    set_tests_properties(nanotins_ipv6_ext_walk PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P4: variable child tables (SRv6 segments + Hop-by-Hop/Dest-Opts/SRH TLV options), serial.
+    add_executable(nanotins_ipv6_children tests/test_ipv6_children.cpp)
+    target_link_libraries(nanotins_ipv6_children PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_children COMMAND $<TARGET_FILE:nanotins_ipv6_children>)
+    set_tests_properties(nanotins_ipv6_children PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P5: child tables bulk path determinism — serial == bulk == thread pool on a 100k batch.
+    add_executable(nanotins_ipv6_children_bulk tests/test_ipv6_children_bulk.cpp)
+    target_link_libraries(nanotins_ipv6_children_bulk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_children_bulk COMMAND $<TARGET_FILE:nanotins_ipv6_children_bulk>)
+    set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke")
 endif()

@@ -140,4 +140,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_dag_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_dag_bulk COMMAND $<TARGET_FILE:nanotins_dag_bulk>)
     set_tests_properties(nanotins_dag_bulk PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P1: the tlv_cursor / repeat_at primitive (Pad1/PadN, truncation, fuzz, bounds).
+    add_executable(nanotins_tlv_cursor tests/test_tlv_cursor.cpp)
+    target_link_libraries(nanotins_tlv_cursor PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_tlv_cursor COMMAND $<TARGET_FILE:nanotins_tlv_cursor>)
+    set_tests_properties(nanotins_tlv_cursor PROPERTIES LABELS "smoke")
 endif()

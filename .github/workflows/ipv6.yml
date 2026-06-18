@@ -1,0 +1,61 @@
+name: ipv6
+
+# Dedicated IPv6 options / extension-header (TLV) validation suite.
+#
+# The IPv6 parsing stack is built on the tlv.hpp cursor primitive and exercised by a focused set of tests,
+# all tagged with the `ipv6` CTest label (see nanotins/CMakeLists.txt):
+#
+#   nanotins_wire_spec_ipv6      base IPv6 header (byte-crossing bit-field + addresses + next_header chain)
+#   nanotins_tlv_cursor          tlv_cursor / repeat_at primitive (Pad1/PadN, truncation, fuzz, bounds)
+#   nanotins_ipv6_ext_walk       extension-header chain walk + L4 correctness (hbh/frag/srh/chain/malformed)
+#   nanotins_ipv6_children       variable child tables (SRv6 segments + HbH/Dest-Opts/SRH TLV options)
+#   nanotins_ipv6_children_bulk  child-table bulk-path determinism (serial == bulk == thread pool, 100k)
+#
+# Unlike the broad `ci` workflow (which gates main), this one validates EVERY push and PR on ANY branch so
+# the IPv6 suite stays green while several people work the feature branches in parallel.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Keep only the latest run per ref in flight — a fresh push supersedes an in-progress one.
+concurrency:
+  group: ipv6-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipv6:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: gcc-13, cxx: g++-13 }
+          - { cc: clang-18, cxx: clang++-18 }
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build ${{ matrix.compiler.cxx }}
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DNANOTINS_SUITE_BUILD_TESTS=ON
+
+      # Build only the IPv6 suite's test targets (the libraries are header-only) to keep the gate fast.
+      - name: Build (ipv6 suite)
+        run: >
+          cmake --build build
+          --target nanotins_wire_spec_ipv6
+                   nanotins_tlv_cursor
+                   nanotins_ipv6_ext_walk
+                   nanotins_ipv6_children
+                   nanotins_ipv6_children_bulk
+
+      - name: Test (ipv6 label)
+        run: ctest --test-dir build -L ipv6 --output-on-failure

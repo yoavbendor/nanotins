@@ -109,7 +109,7 @@ if(NANOTINS_BUILD_TESTS)
     add_executable(nanotins_wire_spec_ipv6 tests/test_wire_spec_ipv6.cpp)
     target_link_libraries(nanotins_wire_spec_ipv6 PRIVATE nanotins_protocols)
     add_test(NAME nanotins_wire_spec_ipv6 COMMAND $<TARGET_FILE:nanotins_wire_spec_ipv6>)
-    set_tests_properties(nanotins_wire_spec_ipv6 PROPERTIES LABELS "smoke")
+    set_tests_properties(nanotins_wire_spec_ipv6 PROPERTIES LABELS "smoke;ipv6")
 
     # M4a: the backbone protocol_specs (eth/vlan/ipv4/ipv6/tcp/udp) read identically to protocols:: structs.
     add_executable(nanotins_protocol_specs tests/test_protocol_specs.cpp)
@@ -145,23 +145,23 @@ if(NANOTINS_BUILD_TESTS)
     add_executable(nanotins_tlv_cursor tests/test_tlv_cursor.cpp)
     target_link_libraries(nanotins_tlv_cursor PRIVATE nanotins_protocols)
     add_test(NAME nanotins_tlv_cursor COMMAND $<TARGET_FILE:nanotins_tlv_cursor>)
-    set_tests_properties(nanotins_tlv_cursor PROPERTIES LABELS "smoke")
+    set_tests_properties(nanotins_tlv_cursor PROPERTIES LABELS "smoke;ipv6")
 
     # IPv6/TLV P2: extension-header chain walk + the L4 correctness fix (hbh/frag/srh/chain/malformed).
     add_executable(nanotins_ipv6_ext_walk tests/test_ipv6_ext_walk.cpp)
     target_link_libraries(nanotins_ipv6_ext_walk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_ext_walk COMMAND $<TARGET_FILE:nanotins_ipv6_ext_walk>)
-    set_tests_properties(nanotins_ipv6_ext_walk PROPERTIES LABELS "smoke")
+    set_tests_properties(nanotins_ipv6_ext_walk PROPERTIES LABELS "smoke;ipv6")
 
     # IPv6/TLV P4: variable child tables (SRv6 segments + Hop-by-Hop/Dest-Opts/SRH TLV options), serial.
     add_executable(nanotins_ipv6_children tests/test_ipv6_children.cpp)
     target_link_libraries(nanotins_ipv6_children PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_children COMMAND $<TARGET_FILE:nanotins_ipv6_children>)
-    set_tests_properties(nanotins_ipv6_children PROPERTIES LABELS "smoke")
+    set_tests_properties(nanotins_ipv6_children PROPERTIES LABELS "smoke;ipv6")
 
     # IPv6/TLV P5: child tables bulk path determinism — serial == bulk == thread pool on a 100k batch.
     add_executable(nanotins_ipv6_children_bulk tests/test_ipv6_children_bulk.cpp)
     target_link_libraries(nanotins_ipv6_children_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv6_children_bulk COMMAND $<TARGET_FILE:nanotins_ipv6_children_bulk>)
-    set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke")
+    set_tests_properties(nanotins_ipv6_children_bulk PROPERTIES LABELS "smoke;ipv6")
 endif()

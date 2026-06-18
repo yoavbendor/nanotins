@@ -183,4 +183,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_someip PRIVATE nanotins_protocols)
     add_test(NAME nanotins_someip COMMAND $<TARGET_FILE:nanotins_someip>)
     set_tests_properties(nanotins_someip PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 2: SOME/IP-SD entries + options child tables (self-describing payload, no IDL), serial.
+    add_executable(nanotins_someip_sd tests/test_someip_sd.cpp)
+    target_link_libraries(nanotins_someip_sd PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_sd COMMAND $<TARGET_FILE:nanotins_someip_sd>)
+    set_tests_properties(nanotins_someip_sd PROPERTIES LABELS "smoke")
 endif()

@@ -63,4 +63,56 @@ inline constexpr std::uint8_t kSomeipResponse = 0x80;
 inline constexpr std::uint8_t kSomeipError = 0x81;
 inline constexpr std::uint8_t kSomeipTpFlag = 0x20;
 
+// ---- SOME/IP-SD (Service Discovery) payload specs ----------------------------------------------------
+// An SD message is a SOME/IP message (Message ID 0xFFFF8100) whose payload is self-describing — unlike a
+// flat-serialized RPC payload, it needs no IDL to walk. Layout (AUTOSAR PRS_SOMEIPServiceDiscovery):
+//
+//   [ Flags:1 | Reserved:3 ]
+//   [ Length of Entries Array:4 ] [ Entries: N x 16-byte entries ]
+//   [ Length of Options Array:4 ] [ Options: M variable-length options ]
+//
+// The 8-byte SD preamble: a flags byte (Reboot 0x80, Unicast 0x40) + 3 reserved, then the entries-array
+// byte length. Entries start at SD-payload byte 8; options start after the entries array + its own 4-byte
+// length word. These are decoded into child tables (someip_sd.hpp), like the IPv6/IPv4 option tables.
+using SomeipSdHeaderSpec = WireSpec<
+    named_field<decltype("flags"_fld), 0, std::uint8_t, wire_endian::big>,
+    named_field<decltype("entries_length"_fld), 4, std::uint32_t, wire_endian::big>>;
+
+// A 16-byte SD entry. Service entries (FindService 0x00, OfferService 0x01) carry a 32-bit Minor Version
+// in the trailing word; eventgroup entries (Subscribe 0x06, SubscribeAck 0x07) instead pack reserved +
+// counter + a 16-bit Eventgroup ID there — exposed as the raw `minor_version` word, which the consumer
+// reinterprets by entry type. num_opt_1/num_opt_2 are the two 4-bit option-run counts in byte 3; ttl is the
+// 24-bit lifetime in bytes 9..11 (read as the low 24 bits of the big-endian word at byte 8).
+using SomeipSdEntrySpec = WireSpec<
+    named_field<decltype("type"_fld), 0, std::uint8_t, wire_endian::big>,
+    named_field<decltype("index_1st_opts"_fld), 1, std::uint8_t, wire_endian::big>,
+    named_field<decltype("index_2nd_opts"_fld), 2, std::uint8_t, wire_endian::big>,
+    named_bit_field<decltype("num_opt_1"_fld), 3, std::uint8_t, 0, 4, wire_endian::big>,
+    named_bit_field<decltype("num_opt_2"_fld), 3, std::uint8_t, 4, 4, wire_endian::big>,
+    named_field<decltype("service_id"_fld), 4, std::uint16_t, wire_endian::big>,
+    named_field<decltype("instance_id"_fld), 6, std::uint16_t, wire_endian::big>,
+    named_field<decltype("major_version"_fld), 8, std::uint8_t, wire_endian::big>,
+    named_bit_field<decltype("ttl"_fld), 8, std::uint32_t, 8, 24, wire_endian::big>,
+    named_field<decltype("minor_version"_fld), 12, std::uint32_t, wire_endian::big>>;
+
+inline constexpr std::size_t kSomeipSdEntrySize = 16;
+inline constexpr std::size_t kSomeipSdPreambleLen = 8;  // flags + reserved + entries_length
+
+// SD entry Type octet values.
+inline constexpr std::uint8_t kSdEntryFindService = 0x00;
+inline constexpr std::uint8_t kSdEntryOfferService = 0x01;
+inline constexpr std::uint8_t kSdEntrySubscribeEventgroup = 0x06;
+inline constexpr std::uint8_t kSdEntrySubscribeEventgroupAck = 0x07;
+
+// SD Option Type octet values. The endpoint options (IPv4/IPv6, uni/multicast/SD) carry an address +
+// L4-protocol + port — the "who offers/finds this service, and where" payload that makes SD useful.
+inline constexpr std::uint8_t kSdOptConfiguration = 0x01;
+inline constexpr std::uint8_t kSdOptLoadBalancing = 0x02;
+inline constexpr std::uint8_t kSdOptIpv4Endpoint = 0x04;
+inline constexpr std::uint8_t kSdOptIpv6Endpoint = 0x06;
+inline constexpr std::uint8_t kSdOptIpv4Multicast = 0x14;
+inline constexpr std::uint8_t kSdOptIpv6Multicast = 0x16;
+inline constexpr std::uint8_t kSdOptIpv4SdEndpoint = 0x24;
+inline constexpr std::uint8_t kSdOptIpv6SdEndpoint = 0x26;
+
 }  // namespace nanotins

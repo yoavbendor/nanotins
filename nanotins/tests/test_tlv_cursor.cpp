@@ -109,6 +109,45 @@ int main() {
         CHECK(walk_all(b, tlv_pad::raw).empty());
     }
 
+    // 7b. ipv4_options: NOP, a Router-Alert-shaped option (type 0x94, self-inclusive len 4 -> 2 value
+    //     bytes), then EOOL — and trailing header padding after EOOL must be ignored.
+    {
+        std::vector<std::uint8_t> b = {0x01,                    // NOP (1 byte)
+                                       0x94, 0x04, 0x00, 0x00,  // type 0x94, len 4 (incl. type+len) -> 2 data
+                                       0x00,                    // EOOL
+                                       0x00, 0x00, 0x00};       // trailing padding (ignored after EOOL)
+        auto rs = walk_all(b, tlv_pad::ipv4_options);
+        CHECK(rs.size() == 3);
+        CHECK(rs[0].type == 1 && rs[0].length == 0 && rs[0].value == nullptr);  // NOP
+        CHECK(rs[1].type == 0x94 && rs[1].length == 2);                         // 4 on wire -> 2 value bytes
+        CHECK(rs[2].type == 0 && rs[2].length == 0 && rs[2].value == nullptr);  // EOOL
+        CHECK(tlv_count(b.data(), b.data() + b.size(), tlv_pad::ipv4_options) == 3);
+    }
+
+    // 7c. ipv4_options EOOL first -> one record, the rest of the region is ignored (not parsed as options).
+    {
+        std::vector<std::uint8_t> b = {0x00, 0x07, 0x07};
+        auto rs = walk_all(b, tlv_pad::ipv4_options);
+        CHECK(rs.size() == 1);
+        CHECK(rs[0].type == 0 && rs[0].length == 0);
+    }
+
+    // 7d. ipv4_options malformed self-inclusive length (< 2) -> stop, never read out of bounds.
+    {
+        std::vector<std::uint8_t> b = {0x07, 0x01};  // claims a 1-byte option, impossible (needs >= 2)
+        CHECK(walk_all(b, tlv_pad::ipv4_options).empty());
+    }
+
+    // 7e. ipv4_options: a valid option followed by a truncated one -> yield the first, stop at the second.
+    {
+        std::vector<std::uint8_t> b = {0x94, 0x04, 0xAA, 0xBB,  // valid: type 0x94, len 4 -> value AA BB
+                                       0x07, 0x05, 0x01};       // claims 5 bytes, only 3 present
+        auto rs = walk_all(b, tlv_pad::ipv4_options);
+        CHECK(rs.size() == 1);
+        CHECK(rs[0].type == 0x94 && rs[0].length == 2);
+        CHECK(rs[0].value[0] == 0xAA && rs[0].value[1] == 0xBB);
+    }
+
     // 8. repeat_at bounds: 3 segments of stride 16.
     {
         std::vector<std::uint8_t> seg(3 * 16, 0);
@@ -132,6 +171,18 @@ int main() {
         }
     }
 
-    std::printf("tlv_cursor: ok (Pad1/PadN, mixed, truncation, raw mode, repeat_at, 20k fuzz)\n");
+    // 10. Fuzz the ipv4_options mode too: random buffers must always terminate and never report an
+    //     out-of-bounds value range (EOOL/NOP single-byte handling + self-inclusive length math).
+    {
+        std::srand(67890);
+        for (int iter = 0; iter < 20000; ++iter) {
+            const std::size_t n = static_cast<std::size_t>(std::rand() % 64);
+            std::vector<std::uint8_t> b(n);
+            for (auto& x : b) x = static_cast<std::uint8_t>(std::rand() & 0xFF);
+            walk_all(b, tlv_pad::ipv4_options);  // CHECKs run inside
+        }
+    }
+
+    std::printf("tlv_cursor: ok (Pad1/PadN, ipv4 NOP/EOOL, mixed, truncation, raw mode, repeat_at, 40k fuzz)\n");
     return 0;
 }

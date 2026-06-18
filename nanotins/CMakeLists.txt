@@ -189,4 +189,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_someip_sd PRIVATE nanotins_protocols)
     add_test(NAME nanotins_someip_sd COMMAND $<TARGET_FILE:nanotins_someip_sd>)
     set_tests_properties(nanotins_someip_sd PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 2b: SD child tables bulk path determinism — serial == bulk == thread pool on a 100k batch.
+    add_executable(nanotins_someip_sd_bulk tests/test_someip_sd_bulk.cpp)
+    target_link_libraries(nanotins_someip_sd_bulk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_sd_bulk COMMAND $<TARGET_FILE:nanotins_someip_sd_bulk>)
+    set_tests_properties(nanotins_someip_sd_bulk PROPERTIES LABELS "smoke")
 endif()

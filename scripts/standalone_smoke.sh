@@ -45,6 +45,7 @@ if [[ -n "${STDEXEC_INC:-}" && -n "${NANOARROW_INC:-}" && -n "${BOOST_INC:-}" ]]
     for b in $BOOST_INC; do EXTRA+=(-I "$b"); done
     run_test ipv4_options_bulk  test_ipv4_options_bulk.cpp  "${EXTRA[@]}"
     run_test ipv6_children_bulk test_ipv6_children_bulk.cpp "${EXTRA[@]}"
+    run_test someip_sd_bulk     test_someip_sd_bulk.cpp     "${EXTRA[@]}"
 else
     echo "note: skipping bulk tests (set STDEXEC_INC / NANOARROW_INC / BOOST_INC to enable them here;"
     echo "      they are covered by the cmake-smoke CI job in any case)."

@@ -50,10 +50,12 @@ if(NOT TARGET nanoarrow_static)
     set(NANOARROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(NANOARROW_BUILD_APPS OFF CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    # NOTE: pinned to a bare commit SHA, so GIT_SHALLOW must stay OFF here. A shallow clone only fetches
+    # branch/tag tips; asking it to check out an arbitrary commit fails with "unable to read tree <sha>".
+    # (boost/stdexec below pin branches/tags, so they can stay shallow.)
     FetchContent_Declare(nanoarrow
         GIT_REPOSITORY https://github.com/apache/arrow-nanoarrow.git
-        GIT_TAG ffe61d3cd2d02da9e60cfc405cd6c50c512f64b9
-        GIT_SHALLOW TRUE)
+        GIT_TAG ffe61d3cd2d02da9e60cfc405cd6c50c512f64b9)
     FetchContent_Populate(nanoarrow)
     add_subdirectory(${nanoarrow_SOURCE_DIR} ${nanoarrow_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()

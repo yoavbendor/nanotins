@@ -155,6 +155,11 @@ struct PtpTimestampBody;  // Sync / Follow_Up / Delay_Req / Pdelay_Req body
 struct PtpTsPortBody;     // Delay_Resp / Pdelay_Resp / Pdelay_Resp_Follow_Up body
 struct PtpAnnounceBody;   // Announce body
 struct PtpSignalingBody;  // Signaling body
+struct Ipv6HopByHopNode;  // IPv6 Hop-by-Hop Options ext header (next_header 0)
+struct Ipv6RoutingNode;   // IPv6 Routing ext header / SRv6 SRH (next_header 43)
+struct Ipv6FragmentNode;  // IPv6 Fragment ext header (next_header 44)
+struct Ipv6DestOptNode;   // IPv6 Destination Options ext header (next_header 60)
+struct Ipv6AhNode;        // IPv6 Authentication Header (next_header 51)
 
 // The post-L2 EtherType dispatch is identical for Ethernet and a VLAN tag's inner type, so both share it.
 template <class Graph>
@@ -163,10 +168,22 @@ NANOTINS_HD inline int ethertype_dispatch(std::uint16_t et) noexcept {
                        edge<0x86DD, Ipv6Node>, edge<0x88F7, GptpNode>>(et);
 }
 
-// IPv4/IPv6 both dispatch the L4 on an 8-bit protocol number to the same TCP/UDP targets.
+// IPv4 dispatches the L4 on an 8-bit protocol number to the TCP/UDP targets.
 template <class Graph>
 NANOTINS_HD inline int ip_proto_dispatch(std::uint64_t proto) noexcept {
     return match_edges<Graph, edge<6, TcpNode>, edge<17, UdpNode>>(proto);
+}
+
+// IPv6 dispatches its `next_header` byte — used by the base IPv6 header AND by every extension header — to
+// the next extension header in the chain or to L4. Extension-header types (0 Hop-by-Hop, 43 Routing/SRv6,
+// 44 Fragment, 60 Destination Options, 51 AH) route to their nodes; 6/17 are L4; everything else (50 ESP,
+// 59 No-Next, and unknown upper-layer protocols) returns -1 to stop the walk. The graph therefore cycles
+// through the ext nodes until L4/terminator (bounded by kMaxWalkSteps).
+template <class Graph>
+NANOTINS_HD inline int ip6_next_dispatch(std::uint64_t next_header) noexcept {
+    return match_edges<Graph, edge<0, Ipv6HopByHopNode>, edge<43, Ipv6RoutingNode>,
+                       edge<44, Ipv6FragmentNode>, edge<60, Ipv6DestOptNode>, edge<51, Ipv6AhNode>,
+                       edge<6, TcpNode>, edge<17, UdpNode>>(next_header);
 }
 
 struct EthNode {
@@ -208,10 +225,75 @@ struct Ipv4Node {
 
 struct Ipv6Node {
     using spec = Ipv6Spec;
-    static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return 40; }  // no ext-headers yet
+    static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return 40; }  // fixed base header
     template <class G>
     static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
-        return ip_proto_dispatch<G>(struct_view<Ipv6Spec>(p)("next_header"_fld));
+        // Walk the extension-header chain: next_header may be an ext header (Hop-by-Hop, Routing/SRv6,
+        // Fragment, Dest-Opts, AH) or an L4 protocol. ip6_next_dispatch routes both.
+        return ip6_next_dispatch<G>(struct_view<Ipv6Spec>(p)("next_header"_fld));
+    }
+};
+
+// ---- IPv6 extension-header nodes -------------------------------------------------------------------
+// Each emits its fixed-field row (a per-type table) and continues the chain by dispatching on its OWN
+// next_header byte. advance() returns the WHOLE header length (incl. any variable segment list / options),
+// so the chain reaches the correct L4 offset even though only the fixed fields are emitted here. The
+// variable parts (SRH segments + TLVs, Hop-by-Hop / Dest-Opt options) are decoded into child tables
+// separately (see dag_decode child emission).
+
+// Hop-by-Hop and Destination Options: same 2-byte preamble, length (hdr_ext_len + 1) * 8.
+struct Ipv6HopByHopNode {
+    using spec = Ipv6ExtOptSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t* p) noexcept {
+        return (static_cast<std::size_t>(struct_view<Ipv6ExtOptSpec>(p)("hdr_ext_len"_fld)) + 1u) * 8u;
+    }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        return ip6_next_dispatch<G>(struct_view<Ipv6ExtOptSpec>(p)("next_header"_fld));
+    }
+};
+struct Ipv6DestOptNode {
+    using spec = Ipv6ExtOptSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t* p) noexcept {
+        return (static_cast<std::size_t>(struct_view<Ipv6ExtOptSpec>(p)("hdr_ext_len"_fld)) + 1u) * 8u;
+    }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        return ip6_next_dispatch<G>(struct_view<Ipv6ExtOptSpec>(p)("next_header"_fld));
+    }
+};
+
+// Routing header / SRv6 SRH: length (hdr_ext_len + 1) * 8.
+struct Ipv6RoutingNode {
+    using spec = Ipv6SrhSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t* p) noexcept {
+        return (static_cast<std::size_t>(struct_view<Ipv6SrhSpec>(p)("hdr_ext_len"_fld)) + 1u) * 8u;
+    }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        return ip6_next_dispatch<G>(struct_view<Ipv6SrhSpec>(p)("next_header"_fld));
+    }
+};
+
+// Fragment header: fixed 8 bytes.
+struct Ipv6FragmentNode {
+    using spec = Ipv6FragmentSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return 8; }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        return ip6_next_dispatch<G>(struct_view<Ipv6FragmentSpec>(p)("next_header"_fld));
+    }
+};
+
+// Authentication Header: length (payload_len + 2) * 4.
+struct Ipv6AhNode {
+    using spec = Ipv6AhSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t* p) noexcept {
+        return (static_cast<std::size_t>(struct_view<Ipv6AhSpec>(p)("payload_len"_fld)) + 2u) * 4u;
+    }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        return ip6_next_dispatch<G>(struct_view<Ipv6AhSpec>(p)("next_header"_fld));
     }
 };
 
@@ -288,8 +370,11 @@ struct PtpSignalingBody {
 // The full L2/L3/L4 + gPTP graph. EthNode is the root (id 0). Adding a protocol appends a node here and one
 // edge row in its parent's dispatch — nothing else changes. The gPTP message-type bodies are the newest
 // additions (GptpNode -> {timestamp | ts+port | announce | signaling}).
+// The IPv6 extension-header nodes are appended at the end so existing node ids / table positions are
+// unchanged (additive). The graph now cycles through ext nodes on the IPv6 branch until it reaches L4.
 using L2L3Graph = graph<EthNode, VlanNode, Ipv4Node, Ipv6Node, TcpNode, UdpNode, GptpNode, PtpTimestampBody,
-                        PtpTsPortBody, PtpAnnounceBody, PtpSignalingBody>;
+                        PtpTsPortBody, PtpAnnounceBody, PtpSignalingBody, Ipv6HopByHopNode, Ipv6RoutingNode,
+                        Ipv6FragmentNode, Ipv6DestOptNode, Ipv6AhNode>;
 
 inline constexpr int kEthRoot = node_id_v<EthNode, L2L3Graph>;
 

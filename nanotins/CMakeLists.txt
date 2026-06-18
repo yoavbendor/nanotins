@@ -146,4 +146,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_tlv_cursor PRIVATE nanotins_protocols)
     add_test(NAME nanotins_tlv_cursor COMMAND $<TARGET_FILE:nanotins_tlv_cursor>)
     set_tests_properties(nanotins_tlv_cursor PROPERTIES LABELS "smoke")
+
+    # IPv6/TLV P2: extension-header chain walk + the L4 correctness fix (hbh/frag/srh/chain/malformed).
+    add_executable(nanotins_ipv6_ext_walk tests/test_ipv6_ext_walk.cpp)
+    target_link_libraries(nanotins_ipv6_ext_walk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_ipv6_ext_walk COMMAND $<TARGET_FILE:nanotins_ipv6_ext_walk>)
+    set_tests_properties(nanotins_ipv6_ext_walk PROPERTIES LABELS "smoke")
 endif()

@@ -18,6 +18,18 @@
 cmake_minimum_required(VERSION 3.20)
 project(nanotins_suite CXX)
 
+# Developer ergonomics for a standalone suite build (skipped when embedded, so we never override an
+# embedder's choices):
+#   * compile_commands.json so clangd / IDEs index our sources AND the FetchContent'd deps we compile.
+#   * park FetchContent's downloads in a stable, IDE-indexable ./.deps that survives `rm -rf build`
+#     (gitignored). Honour a caller-provided FETCHCONTENT_BASE_DIR (e.g. a CI cache) if already set.
+if(PROJECT_IS_TOP_LEVEL)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    if(NOT DEFINED FETCHCONTENT_BASE_DIR)
+        set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "Fetched dependency sources")
+    endif()
+endif()
+
 # Build every library's unit tests. Defaults ON for a standalone suite build, OFF when this is embedded as a
 # subdirectory of a larger project (which sets SOATINS_BUILD_TESTS / NANOTINS_BUILD_TESTS itself).
 option(NANOTINS_SUITE_BUILD_TESTS "Build soatins + nanotins unit tests" ${PROJECT_IS_TOP_LEVEL})

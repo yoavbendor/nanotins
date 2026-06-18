@@ -44,6 +44,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build ${{ matrix.compiler.cxx }}
 
+      # Cache the FetchContent downloads + per-compiler dep builds (a standalone configure parks them in
+      # ./.deps). Keyed on the compiler and the CMakeLists that declare the pins, so a pin bump busts it.
+      - name: Cache fetched deps
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-${{ runner.os }}-${{ matrix.compiler.cxx }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            deps-${{ runner.os }}-${{ matrix.compiler.cxx }}-
+
       - name: Configure
         run: cmake -S . -B build -G Ninja -DNANOTINS_SUITE_BUILD_TESTS=ON
 

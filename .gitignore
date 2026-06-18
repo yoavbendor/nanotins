@@ -6,6 +6,8 @@ cmake-build-*/
 
 # FetchContent / CMake dep checkouts
 _deps/
+.deps/
+compile_commands.json
 *.cmake.stamp
 
 # editor / OS cruft

@@ -52,8 +52,10 @@ if(NOT TARGET nanoarrow_static)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(nanoarrow
         GIT_REPOSITORY https://github.com/apache/arrow-nanoarrow.git
-        GIT_TAG ffe61d3cd2d02da9e60cfc405cd6c50c512f64b9
-        GIT_SHALLOW TRUE)
+        GIT_TAG ffe61d3cd2d02da9e60cfc405cd6c50c512f64b9)
+        # No GIT_SHALLOW: the pin is a raw commit SHA, not a tag/branch tip. A shallow clone fetches only
+        # the default-branch tip, so it can't check the SHA out ("fatal: unable to read tree ...");
+        # a full clone can. (The boost deps above pin a tag, so shallow is fine for them.)
     FetchContent_Populate(nanoarrow)
     add_subdirectory(${nanoarrow_SOURCE_DIR} ${nanoarrow_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()

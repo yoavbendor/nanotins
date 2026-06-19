@@ -177,4 +177,28 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_ipv4_options_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_ipv4_options_bulk COMMAND $<TARGET_FILE:nanotins_ipv4_options_bulk>)
     set_tests_properties(nanotins_ipv4_options_bulk PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 1: the 16-byte message header wire_spec + DAG node (UDP/TCP -> SOME/IP on the SD port).
+    add_executable(nanotins_someip tests/test_someip.cpp)
+    target_link_libraries(nanotins_someip PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip COMMAND $<TARGET_FILE:nanotins_someip>)
+    set_tests_properties(nanotins_someip PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 2: SOME/IP-SD entries + options child tables (self-describing payload, no IDL), serial.
+    add_executable(nanotins_someip_sd tests/test_someip_sd.cpp)
+    target_link_libraries(nanotins_someip_sd PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_sd COMMAND $<TARGET_FILE:nanotins_someip_sd>)
+    set_tests_properties(nanotins_someip_sd PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 2b: SD child tables bulk path determinism — serial == bulk == thread pool on a 100k batch.
+    add_executable(nanotins_someip_sd_bulk tests/test_someip_sd_bulk.cpp)
+    target_link_libraries(nanotins_someip_sd_bulk PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_sd_bulk COMMAND $<TARGET_FILE:nanotins_someip_sd_bulk>)
+    set_tests_properties(nanotins_someip_sd_bulk PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 3: the someip_tlv_cursor primitive (2-byte wire-type tag, wt-driven length-field width).
+    add_executable(nanotins_someip_tlv tests/test_someip_tlv.cpp)
+    target_link_libraries(nanotins_someip_tlv PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_tlv COMMAND $<TARGET_FILE:nanotins_someip_tlv>)
+    set_tests_properties(nanotins_someip_tlv PROPERTIES LABELS "smoke")
 endif()

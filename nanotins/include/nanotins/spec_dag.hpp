@@ -27,6 +27,7 @@
 
 #include "nanotins/protocol_specs.hpp"
 #include "nanotins/protocol_specs_ptp.hpp"
+#include "nanotins/protocol_specs_someip.hpp"
 #include "nanotins/wire_spec.hpp"
 
 #include <cstddef>
@@ -160,6 +161,7 @@ struct Ipv6RoutingNode;   // IPv6 Routing ext header / SRv6 SRH (next_header 43)
 struct Ipv6FragmentNode;  // IPv6 Fragment ext header (next_header 44)
 struct Ipv6DestOptNode;   // IPv6 Destination Options ext header (next_header 60)
 struct Ipv6AhNode;        // IPv6 Authentication Header (next_header 51)
+struct SomeipNode;        // SOME/IP message header (over UDP/TCP, dispatched by well-known port)
 
 // The post-L2 EtherType dispatch is identical for Ethernet and a VLAN tag's inner type, so both share it.
 template <class Graph>
@@ -305,6 +307,16 @@ struct Ipv6AhNode {
     }
 };
 
+// L4 -> SOME/IP dispatch: a SOME/IP message rides UDP/TCP on a well-known port. Ports are an exact key
+// (no heuristic), so this stays in the match_edges model — but unlike EtherType, service ports are dynamic,
+// so we match the canonical SD port on EITHER endpoint and leave additional ports as extra edge rows added
+// by configuration. Returns the SomeipNode id on a hit, else -1 (the L4 stays a leaf).
+template <class Graph>
+NANOTINS_HD inline int someip_port_dispatch(std::uint16_t dst, std::uint16_t src) noexcept {
+    const int t = match_edges<Graph, edge<kSomeipSdPort, SomeipNode>>(dst);
+    return t >= 0 ? t : match_edges<Graph, edge<kSomeipSdPort, SomeipNode>>(src);
+}
+
 struct TcpNode {
     using spec = TcpSpec;
     static NANOTINS_HD std::size_t advance(const std::uint8_t* p) noexcept {
@@ -312,8 +324,9 @@ struct TcpNode {
         return hdr >= 20 ? hdr : 20;
     }
     template <class G>
-    static NANOTINS_HD int next(const std::uint8_t*) noexcept {
-        return -1;  // leaf: the rest is the application payload
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        struct_view<TcpSpec> v(p);
+        return someip_port_dispatch<G>(v("dst_port"_fld), v("src_port"_fld));  // else -1 (payload)
     }
 };
 
@@ -321,8 +334,9 @@ struct UdpNode {
     using spec = UdpSpec;
     static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return 8; }
     template <class G>
-    static NANOTINS_HD int next(const std::uint8_t*) noexcept {
-        return -1;  // leaf
+    static NANOTINS_HD int next(const std::uint8_t* p) noexcept {
+        struct_view<UdpSpec> v(p);
+        return someip_port_dispatch<G>(v("dst_port"_fld), v("src_port"_fld));  // else -1 (payload)
     }
 };
 
@@ -375,14 +389,28 @@ struct PtpSignalingBody {
     static NANOTINS_HD int next(const std::uint8_t*) noexcept { return -1; }
 };
 
+// ---- SOME/IP -----------------------------------------------------------------------------------------
+// Emits the fixed 16-byte SOME/IP message header at the post-L4 offset, then stops (leaf). The variable
+// payload — flat-serialized RPC args, SOME/IP-SD entries/options, or TLV members — is decoded in later
+// phases (SD child tables, a someip_tlv_cursor); none of it is needed to tabulate the header. advance() is
+// the fixed header size, so the walk's `consumed` lands at the payload boundary.
+struct SomeipNode {
+    using spec = SomeipSpec;
+    static NANOTINS_HD std::size_t advance(const std::uint8_t*) noexcept { return kSomeipHeaderLen; }
+    template <class G>
+    static NANOTINS_HD int next(const std::uint8_t*) noexcept { return -1; }
+};
+
 // The full L2/L3/L4 + gPTP graph. EthNode is the root (id 0). Adding a protocol appends a node here and one
 // edge row in its parent's dispatch — nothing else changes. The gPTP message-type bodies are the newest
 // additions (GptpNode -> {timestamp | ts+port | announce | signaling}).
 // The IPv6 extension-header nodes are appended at the end so existing node ids / table positions are
 // unchanged (additive). The graph now cycles through ext nodes on the IPv6 branch until it reaches L4.
+// SomeipNode is appended last (additive): existing node ids / table positions are unchanged, and UDP/TCP
+// now reach it on the well-known SOME/IP port (a leaf otherwise, exactly as before).
 using L2L3Graph = graph<EthNode, VlanNode, Ipv4Node, Ipv6Node, TcpNode, UdpNode, GptpNode, PtpTimestampBody,
                         PtpTsPortBody, PtpAnnounceBody, PtpSignalingBody, Ipv6HopByHopNode, Ipv6RoutingNode,
-                        Ipv6FragmentNode, Ipv6DestOptNode, Ipv6AhNode>;
+                        Ipv6FragmentNode, Ipv6DestOptNode, Ipv6AhNode, SomeipNode>;
 
 inline constexpr int kEthRoot = node_id_v<EthNode, L2L3Graph>;
 

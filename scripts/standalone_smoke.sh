@@ -38,6 +38,7 @@ run_test ipv4_options    test_ipv4_options.cpp
 run_test ipv6_children   test_ipv6_children.cpp
 run_test someip          test_someip.cpp
 run_test someip_sd       test_someip_sd.cpp
+run_test someip_tlv      test_someip_tlv.cpp
 
 # --- bulk determinism tests (only when stdexec + nanoarrow + boost headers are provided) -------------
 if [[ -n "${STDEXEC_INC:-}" && -n "${NANOARROW_INC:-}" && -n "${BOOST_INC:-}" ]]; then

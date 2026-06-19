@@ -195,4 +195,10 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_someip_sd_bulk PRIVATE nanotins_protocols)
     add_test(NAME nanotins_someip_sd_bulk COMMAND $<TARGET_FILE:nanotins_someip_sd_bulk>)
     set_tests_properties(nanotins_someip_sd_bulk PROPERTIES LABELS "smoke")
+
+    # SOME/IP Phase 3: the someip_tlv_cursor primitive (2-byte wire-type tag, wt-driven length-field width).
+    add_executable(nanotins_someip_tlv tests/test_someip_tlv.cpp)
+    target_link_libraries(nanotins_someip_tlv PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_someip_tlv COMMAND $<TARGET_FILE:nanotins_someip_tlv>)
+    set_tests_properties(nanotins_someip_tlv PROPERTIES LABELS "smoke")
 endif()

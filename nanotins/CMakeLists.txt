@@ -215,4 +215,11 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_dpar_palette PRIVATE nanotins_protocols)
     add_test(NAME nanotins_dpar_palette COMMAND $<TARGET_FILE:nanotins_dpar_palette>)
     set_tests_properties(nanotins_dpar_palette PROPERTIES LABELS "smoke")
+
+    # DPAR Arrow tier: a rule table (std::vector<Row>) -> Arrow record batch via soatins to_arrow. Needs
+    # nanoarrow (the Lance write of these batches is exercised in nanolance's dpar2lance example).
+    add_executable(nanotins_dpar_arrow tests/test_dpar_arrow.cpp)
+    target_link_libraries(nanotins_dpar_arrow PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_dpar_arrow COMMAND $<TARGET_FILE:nanotins_dpar_arrow>)
+    set_tests_properties(nanotins_dpar_arrow PROPERTIES LABELS "smoke")
 endif()

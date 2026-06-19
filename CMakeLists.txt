@@ -38,4 +38,5 @@ option(NANOTINS_BUILD_EXAMPLES "Build nanotins examples" ${PROJECT_IS_TOP_LEVEL}
 if(NANOTINS_BUILD_EXAMPLES)
     add_subdirectory(examples/pcapng2json)
     add_subdirectory(examples/dpar)
+    add_subdirectory(examples/lldp)
 endif()

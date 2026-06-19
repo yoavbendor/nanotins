@@ -201,6 +201,22 @@ int main() {
         CHECK(hits[0].rule_id == 0 && hits[1].rule_id == 1 && hits[2].rule_id == 2);
     }
 
+    // ---- 5b: the L2 eth_payload region (anchor eth, +14) — used by link-layer parsers like LLDP -----
+    {
+        // An Ethernet frame with EtherType 0x88CC (LLDP) and a 3-byte payload after the 14-byte header.
+        // 0x88CC has no DAG edge, so the walk stops at eth (present), and eth_payload begins at byte 14.
+        std::vector<std::uint8_t> pkt(14 + 3, 0);
+        put16(pkt, 12, 0x88CC);
+        pkt[14] = 0xAA;
+        pkt[15] = 0xBB;
+        pkt[16] = 0xCC;
+        dpar::EngineStats st;
+        auto hits = run_rules("eth.ethertype == 0x88CC => raw_tlv eth_payload lldpish\n", pkt, 0, st);
+        CHECK(hits.size() == 1);
+        CHECK(hits[0].kind == 1);  // raw_tlv
+        CHECK((hits[0].region == std::vector<std::uint8_t>{0xAA, 0xBB, 0xCC}));  // exactly the L2 payload
+    }
+
     // ---- 6: init-time validation collects every problem --------------------------------------------
     {
         dpar::CompileResult cr = dpar::compile_rules(

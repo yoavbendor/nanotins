@@ -1,0 +1,13 @@
+# lldp example rules — one rule per line:
+#
+#   <node>.<field> <op> <value> [&& ...]  =>  <parser>  <region>  "<label>"
+#
+#   parser : lldp        (the Kind defined in lldp.hpp)
+#   region : eth_payload (the L2 payload, right after the 14-byte Ethernet header)
+#
+# LLDP rides directly on Ethernet under EtherType 0x88CC. Because a VLAN-tagged frame carries 0x8100 in
+# the Ethernet EtherType field, matching eth.ethertype == 0x88CC is only true for UNTAGGED frames — so
+# eth_payload (eth + 14) is exactly the LLDP payload start. (Tagged LLDP would match vlan.inner_ethertype
+# and use a vlan_payload region — see the example's notes.)
+
+eth.ethertype == 0x88CC => lldp eth_payload "lldp"

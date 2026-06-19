@@ -217,6 +217,23 @@ int main() {
         CHECK((hits[0].region == std::vector<std::uint8_t>{0xAA, 0xBB, 0xCC}));  // exactly the L2 payload
     }
 
+    // ---- 5c: the vlan_payload region (anchor vlan, +4) — 802.1Q-tagged link-layer payload -----------
+    {
+        // eth(0x8100) + 802.1Q tag (TCI + inner ethertype 0x88CC at byte 16) + a 3-byte payload at 18.
+        // The walk descends eth -> vlan and stops (inner 0x88CC has no edge), so vlan is present at 14.
+        std::vector<std::uint8_t> pkt(18 + 3, 0);
+        put16(pkt, 12, 0x8100);   // eth EtherType = 802.1Q
+        put16(pkt, 16, 0x88CC);   // inner (post-tag) EtherType = LLDP
+        pkt[18] = 0xDE;
+        pkt[19] = 0xAD;
+        pkt[20] = 0xBE;
+        dpar::EngineStats st;
+        auto hits = run_rules("vlan.inner_ethertype == 0x88CC => raw_tlv vlan_payload tagged\n", pkt, 0, st);
+        CHECK(hits.size() == 1);
+        CHECK(hits[0].kind == 1);  // raw_tlv
+        CHECK((hits[0].region == std::vector<std::uint8_t>{0xDE, 0xAD, 0xBE}));  // payload after the VLAN tag
+    }
+
     // ---- 6: init-time validation collects every problem --------------------------------------------
     {
         dpar::CompileResult cr = dpar::compile_rules(

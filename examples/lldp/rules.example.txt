@@ -7,7 +7,11 @@
 #
 # LLDP rides directly on Ethernet under EtherType 0x88CC. Because a VLAN-tagged frame carries 0x8100 in
 # the Ethernet EtherType field, matching eth.ethertype == 0x88CC is only true for UNTAGGED frames — so
-# eth_payload (eth + 14) is exactly the LLDP payload start. (Tagged LLDP would match vlan.inner_ethertype
-# and use a vlan_payload region — see the example's notes.)
+# eth_payload (eth + 14) is exactly the LLDP payload start.
+#
+# On a trunk/VLAN port LLDP arrives 802.1Q-tagged: the Ethernet EtherType is 0x8100 and the LLDP EtherType
+# moves into the VLAN tag's inner_ethertype. That frame matches the second rule, and vlan_payload (the 4
+# bytes after the VLAN node) is its LLDP start. Both rules feed the same "lldp" table.
 
-eth.ethertype == 0x88CC => lldp eth_payload "lldp"
+eth.ethertype == 0x88CC        => lldp eth_payload  "lldp"
+vlan.inner_ethertype == 0x88CC => lldp vlan_payload "lldp"

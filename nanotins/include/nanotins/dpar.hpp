@@ -41,9 +41,10 @@ enum class CmpOp : std::uint8_t { eq, lt, gt, le, ge };  // `ne` is intentionall
 
 // The payload region a matched rule hands to its parser. The anchor is the framing node the region is
 // measured from; it must have been emitted by the walk for the region to resolve. `eth_payload` is the
-// L2 payload (after the 14-byte Ethernet II header) — the entry point for a link-layer protocol such as
-// LLDP that rides directly on Ethernet rather than over IP/L4.
-enum class RegionKind : std::uint8_t { eth_payload, udp_payload, tcp_payload, someip_payload };
+// L2 payload (after the 14-byte Ethernet II header); `vlan_payload` is the payload after an 802.1Q tag
+// (the 4 bytes after the VLAN node) — both entry points for a link-layer protocol such as LLDP that
+// rides directly on Ethernet (untagged or VLAN-tagged) rather than over IP/L4.
+enum class RegionKind : std::uint8_t { eth_payload, vlan_payload, udp_payload, tcp_payload, someip_payload };
 
 // ---- a resolved field location (POD) -----------------------------------------------------------------
 // Built at init from the compile-time WireSpec field list; read at runtime by read_field_runtime. Mirrors
@@ -255,6 +256,7 @@ inline bool parse_u64(const std::string& s, std::uint64_t& out) {
 
 inline bool parse_region(const std::string& s, RegionKind& kind, const char*& anchor_name) {
     if (s == "eth_payload") { kind = RegionKind::eth_payload; anchor_name = "eth"; return true; }
+    if (s == "vlan_payload") { kind = RegionKind::vlan_payload; anchor_name = "vlan"; return true; }
     if (s == "udp_payload") { kind = RegionKind::udp_payload; anchor_name = "udp"; return true; }
     if (s == "tcp_payload") { kind = RegionKind::tcp_payload; anchor_name = "tcp"; return true; }
     if (s == "someip_payload") { kind = RegionKind::someip_payload; anchor_name = "someip"; return true; }
@@ -286,7 +288,7 @@ inline std::string strip_quotes(std::string s) {
 //   <op>      one of ==  <  >  <=  >=
 //   <value>   decimal or 0x-hex; must fit the field's width
 //   <parser>  a name in `parser_names` (the palette's Kind names)
-//   <region>  eth_payload | udp_payload | tcp_payload | someip_payload
+//   <region>  eth_payload | vlan_payload | udp_payload | tcp_payload | someip_payload
 //
 // Every problem is collected (not just the first); on any error, ok=false and `rules` is empty.
 inline CompileResult compile_rules(const std::string& text, const std::vector<CatalogEntry>& catalog,
@@ -478,6 +480,11 @@ inline bool resolve_region(const RegionSel& rs, const std::size_t* off_by_node, 
             begin = aoff + 14u;  // fixed Ethernet II header (an untagged frame; a rule matching
                                  // eth.ethertype is only true when there is no VLAN tag, so this is
                                  // exactly the L2 payload start — e.g. an LLDP frame on EtherType 0x88CC)
+            break;
+        case RegionKind::vlan_payload:
+            begin = aoff + 4u;  // the 4-byte 802.1Q tag after the VLAN node (a rule matching
+                                // vlan.inner_ethertype implies a single tag, so this is the tagged
+                                // frame's L2 payload start — e.g. LLDP on a trunk port)
             break;
         case RegionKind::udp_payload:
             begin = aoff + 8u;  // fixed UDP header

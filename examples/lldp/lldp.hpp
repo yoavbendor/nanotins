@@ -117,6 +117,10 @@ struct lldp_cursor {
 // built-in SomeipTlvRow, we store the value's byte OFFSET + LENGTH, plus a fixed-size `value_head`
 // snapshot (a std::array<uint8,N> maps to an Arrow fixed-size-binary column) that captures the first 32
 // value bytes — enough to actually SEE the system name / port id in the output, not just its position.
+//
+// On top of that, the structured TLVs (TTL, System Capabilities, Management Address) are DECODED into
+// typed columns. Those columns are 0 for TLVs that do not use them — the same sparse-but-uniform shape
+// the SOME/IP-SD entry table uses, where one row type carries fields several entry kinds reinterpret.
 struct LldpTlvRow {
     std::uint64_t packet_id;             // which packet (the capture-order id)
     std::uint32_t rule_id;               // which rule emitted this row (the discriminator)
@@ -125,10 +129,29 @@ struct LldpTlvRow {
     std::uint16_t tlv_length;            // value length in bytes (0..511)
     std::uint8_t subtype;                // chassis/port-id subtype (value[0] for types 1/2; else 0)
     std::uint16_t value_offset;          // offset of the value bytes from the region (payload) start
+    // --- decoded, type-specific columns (0 when the TLV type does not carry them) ---
+    std::uint16_t ttl_seconds;           // type 3 (TTL): seconds the neighbour info stays valid
+    std::uint16_t caps_supported;        // type 7 (System Capabilities): capability bitmap
+    std::uint16_t caps_enabled;          // type 7 (System Capabilities): which of the above are enabled
+    std::uint8_t mgmt_addr_subtype;      // type 8: IANA address family (1=IPv4, 2=IPv6, 6=802 MAC, ...)
+    std::uint8_t mgmt_iface_subtype;     // type 8: interface numbering subtype (2=ifIndex, 3=sysPortNum)
+    std::uint32_t mgmt_iface_number;     // type 8: the interface number
     std::array<std::uint8_t, 32> value_head;  // first up-to-32 value bytes, zero-padded (fixed-binary col)
 };
 BOOST_DESCRIBE_STRUCT(LldpTlvRow, (),
-                      (packet_id, rule_id, tlv_index, tlv_type, tlv_length, subtype, value_offset, value_head))
+                      (packet_id, rule_id, tlv_index, tlv_type, tlv_length, subtype, value_offset,
+                       ttl_seconds, caps_supported, caps_enabled, mgmt_addr_subtype, mgmt_iface_subtype,
+                       mgmt_iface_number, value_head))
+
+// Tiny big-endian reads from a value byte buffer. The caller guards the offset against the TLV length
+// first, so these never run past the (already bounded) value region.
+inline std::uint16_t rd_be16(const std::uint8_t* v) {
+    return static_cast<std::uint16_t>((static_cast<std::uint16_t>(v[0]) << 8) | v[1]);
+}
+inline std::uint32_t rd_be32(const std::uint8_t* v) {
+    return (static_cast<std::uint32_t>(v[0]) << 24) | (static_cast<std::uint32_t>(v[1]) << 16) |
+           (static_cast<std::uint32_t>(v[2]) << 8) | static_cast<std::uint32_t>(v[3]);
+}
 
 // ---- 4. the DPAR Kind: wrap the parser so a rule can select it -------------------------------------
 // A Kind is the extension point. It is just: a Row type, a name() (the CLI selector + table label), and
@@ -161,11 +184,57 @@ struct LldpKind {
             for (std::size_t i = 0; i < head; ++i) {
                 row.value_head[i] = r.value[i];
             }
+            // Decode the structured TLVs into typed columns. Each read is guarded against r.length, so a
+            // truncated/malformed TLV simply leaves the column at 0 (never reads past the value region).
+            decode_typed(r, row);
             out.push_back(row);
             ++idx;
             ++n;
         }
         return n;
+    }
+
+private:
+    static void decode_typed(const lldp_tlv_record& r, Row& row) {
+        const std::uint8_t* v = r.value;
+        if (v == nullptr) {
+            return;
+        }
+        switch (r.type) {
+            case kLldpTtl:  // [ttl:2] — seconds the advertised info remains valid
+                if (r.length >= 2) {
+                    row.ttl_seconds = rd_be16(v);
+                }
+                break;
+            case kLldpSysCaps:  // [capabilities:2][enabled:2] — two IEEE 802.1AB capability bitmaps
+                if (r.length >= 4) {
+                    row.caps_supported = rd_be16(v);
+                    row.caps_enabled = rd_be16(v + 2);
+                }
+                break;
+            case kLldpMgmtAddr: {
+                // [addr_str_len:1][addr_subtype:1][addr:addr_str_len-1][iface_subtype:1][iface_num:4][oid..]
+                // addr_str_len counts the subtype byte + the address bytes.
+                if (r.length < 1) {
+                    break;
+                }
+                const std::size_t addr_str_len = v[0];
+                if (addr_str_len < 1 || r.length < 1u + addr_str_len) {
+                    break;
+                }
+                row.mgmt_addr_subtype = v[1];                  // IANA address family
+                const std::size_t after_addr = 1u + addr_str_len;  // index of the interface-subtype byte
+                if (r.length >= after_addr + 1u) {
+                    row.mgmt_iface_subtype = v[after_addr];
+                }
+                if (r.length >= after_addr + 1u + 4u) {
+                    row.mgmt_iface_number = rd_be32(v + after_addr + 1u);
+                }
+                break;
+            }
+            default:
+                break;
+        }
     }
 };
 
@@ -195,6 +264,56 @@ inline void append_value_head(std::string& out, const LldpTlvRow& r) {
     out += "\"";
 }
 
+// IEEE 802.1AB system-capability bit names (bit 0 = LSB). Render a JSON array of the bits set in `bits`.
+inline void append_caps(std::string& out, const char* key, std::uint16_t bits) {
+    static const char* kNames[] = {"Other",     "Repeater",  "Bridge",     "WLAN-AP",
+                                   "Router",    "Telephone", "DOCSIS",     "Station",
+                                   "C-VLAN",    "S-VLAN",    "TPMR"};
+    out += "\"";
+    out += key;
+    out += "\":[";
+    bool first = true;
+    for (int i = 0; i < 11; ++i) {
+        if (bits & (1u << i)) {
+            if (!first) {
+                out += ",";
+            }
+            out += "\"";
+            out += kNames[i];
+            out += "\"";
+            first = false;
+        }
+    }
+    out += "]";
+}
+
+// Per-type decoded fields (each fragment ends with a comma so the value_head fields can follow). Emits
+// nothing for TLV types without a typed decode.
+inline void append_decoded(std::string& out, const LldpTlvRow& r) {
+    char buf[96];
+    switch (r.tlv_type) {
+        case kLldpTtl:
+            std::snprintf(buf, sizeof(buf), "\"ttl_seconds\":%u,", r.ttl_seconds);
+            out += buf;
+            break;
+        case kLldpSysCaps:
+            std::snprintf(buf, sizeof(buf), "\"caps_supported\":%u,\"caps_enabled\":%u,",
+                          r.caps_supported, r.caps_enabled);
+            out += buf;
+            append_caps(out, "caps", r.caps_enabled);  // human-readable enabled list
+            out += ",";
+            break;
+        case kLldpMgmtAddr:
+            std::snprintf(buf, sizeof(buf),
+                          "\"mgmt_addr_subtype\":%u,\"mgmt_iface_subtype\":%u,\"mgmt_iface_number\":%u,",
+                          r.mgmt_addr_subtype, r.mgmt_iface_subtype, r.mgmt_iface_number);
+            out += buf;
+            break;
+        default:
+            break;
+    }
+}
+
 inline void row_to_json(std::string& out, const LldpTlvRow& r) {
     char buf[64];
     out += "{";
@@ -215,6 +334,7 @@ inline void row_to_json(std::string& out, const LldpTlvRow& r) {
     out += buf;
     std::snprintf(buf, sizeof(buf), "\"value_offset\":%u,", r.value_offset);
     out += buf;
+    append_decoded(out, r);     // type-specific decoded fields (ttl/caps/mgmt), if any
     append_value_head(out, r);  // "hex":"..","ascii":".."
     out += "}";
 }

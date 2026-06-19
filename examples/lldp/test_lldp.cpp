@@ -57,6 +57,26 @@ std::vector<std::uint8_t> build_lldpdu() {
     return b;
 }
 
+// A richer LLDPDU that also carries the structured TLVs we decode into typed columns: System Capabilities
+// (Bridge+Router supported, Bridge enabled) and a Management Address (IPv4 192.168.1.1, ifIndex 3).
+std::vector<std::uint8_t> build_lldpdu_rich() {
+    std::vector<std::uint8_t> b;
+    put_tlv(b, lldp_example::kLldpChassisId, {4, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55});
+    {
+        std::vector<std::uint8_t> v = {5};
+        auto name = bytes_of("Gi0/1");
+        v.insert(v.end(), name.begin(), name.end());
+        put_tlv(b, lldp_example::kLldpPortId, v);
+    }
+    put_tlv(b, lldp_example::kLldpTtl, {0x00, 0x78});                         // 120 seconds
+    put_tlv(b, lldp_example::kLldpSysName, bytes_of("switch01"));
+    put_tlv(b, lldp_example::kLldpSysCaps, {0x00, 0x14, 0x00, 0x04});         // supported Bridge|Router, enabled Bridge
+    put_tlv(b, lldp_example::kLldpMgmtAddr,
+            {5, 1, 192, 168, 1, 1, 2, 0x00, 0x00, 0x00, 0x03, 0});           // IPv4 192.168.1.1, ifIndex 3
+    put_tlv(b, lldp_example::kLldpEnd, {});
+    return b;
+}
+
 // Wrap an LLDPDU as the payload of an Ethernet frame (EtherType 0x88CC, 14-byte header).
 std::vector<std::uint8_t> build_eth_lldp(const std::vector<std::uint8_t>& lldpdu) {
     std::vector<std::uint8_t> f(14, 0);
@@ -66,6 +86,24 @@ std::vector<std::uint8_t> build_eth_lldp(const std::vector<std::uint8_t>& lldpdu
     }
     f[12] = static_cast<std::uint8_t>(lldp_example::kLldpEtherType >> 8);
     f[13] = static_cast<std::uint8_t>(lldp_example::kLldpEtherType & 0xFF);
+    f.insert(f.end(), lldpdu.begin(), lldpdu.end());
+    return f;
+}
+
+// Wrap an LLDPDU as the payload of an 802.1Q-tagged frame: eth EtherType 0x8100, a 4-byte VLAN tag
+// (vid 100) whose inner_ethertype is 0x88CC, then the LLDPDU — i.e. LLDP as it arrives on a trunk port.
+std::vector<std::uint8_t> build_vlan_lldp(const std::vector<std::uint8_t>& lldpdu) {
+    std::vector<std::uint8_t> f(18, 0);
+    const std::uint8_t dst[6] = {0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E};
+    for (int i = 0; i < 6; ++i) {
+        f[i] = dst[i];
+    }
+    f[12] = 0x81;  // eth EtherType = 0x8100 (802.1Q)
+    f[13] = 0x00;
+    f[14] = 0x00;  // VLAN TCI: pcp 0, vid 100
+    f[15] = 0x64;
+    f[16] = static_cast<std::uint8_t>(lldp_example::kLldpEtherType >> 8);    // inner EtherType = LLDP
+    f[17] = static_cast<std::uint8_t>(lldp_example::kLldpEtherType & 0xFF);
     f.insert(f.end(), lldpdu.begin(), lldpdu.end());
     return f;
 }
@@ -199,6 +237,51 @@ int main() {
         CHECK(engine.stats().packets_matched_any == 0);
     }
 
-    std::printf("lldp: ok (cursor walk+End stop, truncation, end-to-end eth_payload rule, no false fire)\n");
+    // ---- 5: typed-column decode of TTL / System Capabilities / Management Address -------------------
+    {
+        const auto cap = one_packet_pcapng(build_eth_lldp(build_lldpdu_rich()));
+        lldp_example::Engine engine;
+        CHECK(engine.load_rules("eth.ethertype == 0x88CC => lldp eth_payload \"lldp\"\n").ok);
+        run_capture(engine, cap);
+
+        const auto& rows = engine.table();
+        CHECK(rows.size() == 6);  // chassis, port, ttl, sysname, syscaps, mgmt (End is not emitted)
+
+        CHECK(rows[2].tlv_type == lldp_example::kLldpTtl && rows[2].ttl_seconds == 120);
+        // System Capabilities: supported = Bridge(2)|Router(4) = 0x14, enabled = Bridge = 0x04.
+        CHECK(rows[4].tlv_type == lldp_example::kLldpSysCaps);
+        CHECK(rows[4].caps_supported == 0x14 && rows[4].caps_enabled == 0x04);
+        // Management Address: IPv4 (subtype 1), interface numbering ifIndex (2), interface number 3.
+        CHECK(rows[5].tlv_type == lldp_example::kLldpMgmtAddr);
+        CHECK(rows[5].mgmt_addr_subtype == 1 && rows[5].mgmt_iface_subtype == 2 &&
+              rows[5].mgmt_iface_number == 3);
+        // The IPv4 address bytes are visible in the value_head preview (after addr_len + subtype).
+        CHECK(rows[5].value_head[2] == 192 && rows[5].value_head[5] == 1);
+
+        // The NDJSON renders the decoded fields (a capability name list, the TTL, the mgmt subtype).
+        std::string out;
+        engine.dump_ndjson(out);
+        CHECK(out.find("\"caps\":[\"Bridge\"]") != std::string::npos);
+        CHECK(out.find("\"ttl_seconds\":120") != std::string::npos);
+        CHECK(out.find("\"mgmt_addr_subtype\":1") != std::string::npos);
+    }
+
+    // ---- 6: 802.1Q-tagged LLDP via the vlan_payload region (trunk-port capture) ---------------------
+    {
+        const auto cap = one_packet_pcapng(build_vlan_lldp(build_lldpdu()));
+        lldp_example::Engine engine;
+        CHECK(engine.load_rules("vlan.inner_ethertype == 0x88CC => lldp vlan_payload \"lldp\"\n").ok);
+        run_capture(engine, cap);
+
+        const auto& rows = engine.table();
+        CHECK(rows.size() == 4);  // same TLVs as the untagged case — the tag is transparent to the parser
+        CHECK(rows[0].tlv_type == lldp_example::kLldpChassisId && rows[0].subtype == 4);
+        CHECK(rows[3].tlv_type == lldp_example::kLldpSysName && head_ascii(rows[3]) == "switch01");
+        CHECK(engine.stats().packets_matched_any == 1);
+    }
+
+    std::printf(
+        "lldp: ok (cursor walk+End stop, truncation, eth_payload rule, no false fire, typed TTL/caps/mgmt "
+        "decode, 802.1Q vlan_payload)\n");
     return 0;
 }

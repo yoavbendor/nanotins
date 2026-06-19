@@ -201,4 +201,18 @@ if(NANOTINS_BUILD_TESTS)
     target_link_libraries(nanotins_someip_tlv PRIVATE nanotins_protocols)
     add_test(NAME nanotins_someip_tlv COMMAND $<TARGET_FILE:nanotins_someip_tlv>)
     set_tests_properties(nanotins_someip_tlv PROPERTIES LABELS "smoke")
+
+    # DPAR (Dynamic Parser Application Rules) — the matching engine: catalog + read_field_runtime parity,
+    # comparators, rule compile/validate, region resolution, observability, opt-in. Dependency-light core.
+    add_executable(nanotins_dpar tests/test_dpar.cpp)
+    target_link_libraries(nanotins_dpar PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_dpar COMMAND $<TARGET_FILE:nanotins_dpar>)
+    set_tests_properties(nanotins_dpar PROPERTIES LABELS "smoke")
+
+    # DPAR palette tier: the built-in someip_tlv/raw_tlv Kinds + SoA output tables + a downstream user Kind
+    # composed into the palette (the "bring your own parser, no fork" guarantee). Needs soatins reflection.
+    add_executable(nanotins_dpar_palette tests/test_dpar_palette.cpp)
+    target_link_libraries(nanotins_dpar_palette PRIVATE nanotins_protocols)
+    add_test(NAME nanotins_dpar_palette COMMAND $<TARGET_FILE:nanotins_dpar_palette>)
+    set_tests_properties(nanotins_dpar_palette PROPERTIES LABELS "smoke")
 endif()

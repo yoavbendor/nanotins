@@ -27,6 +27,29 @@ Example output (one line per packet):
 The conversion core (`pcapng2json.hpp`, `to_ndjson(bytes)`) is header-only, so it's unit-tested in-process
 (`test_pcapng2json.cpp`, the `pcapng2json_smoke` CTest) without a sample file or a subprocess.
 
+## For AI agents
+
+**Use this example when** you want to eyeball or diff a capture's decoded L2/L3/L4 layers as text (NDJSON),
+or you need a header-only decode helper to unit-test in-process. It is **print-only** — no storage.
+
+**Pick a sibling instead when:** you want columnar output → `pcapng2lance`
+([nanolance](https://github.com/yoavbendor/nanolance/tree/main/examples/pcapng2lance), Lance + external
+payloads) or `pcapng2parquet`
+([nanoarrow2parquet](https://github.com/yoavbendor/nanoarrow2parquet/tree/main/examples/pcapng2parquet),
+Parquet).
+
+**Minimal use:** CLI `pcapng2json capture.pcapng` (one JSON object per packet, NDJSON to stdout), or call
+the header-only `to_ndjson(bytes)` directly in a test.
+
+**Do**
+- Reuse `to_ndjson(bytes)` in-process for tests (no sample file or subprocess needed).
+- Treat output as NDJSON — one object per line; stream it line by line.
+
+**Don't**
+- Don't expect columns, payloads, or a dataset — this only prints.
+- Don't expect PTP / LLDP / SOME/IP here — `walk_packet` decodes Ethernet / VLAN / IPv4 / IPv6 / TCP / UDP
+  only (use the columnar examples for the deeper stack).
+
 ## Build
 
 Built automatically with a standalone suite build:

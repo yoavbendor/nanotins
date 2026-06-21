@@ -58,6 +58,21 @@ nanotins::dag_decode_packet<G>(packet_id, ptr, len, tables, nanotins::kEthRoot);
 // each std::get<node_id_v<…Node, G>>(tables) is an SoA table → to_arrow → Lance / Parquet
 ```
 
+## For AI agents — which piece do I use?
+
+| Your goal | Use | Link |
+|---|---|---|
+| Parse pcap/pcapng → per-protocol Arrow tables | **`nanotins`** | [`nanotins/README.md`](nanotins/README.md) has the decode loop, do/don't, and how to avoid stdexec |
+| Describe my own fixed-shape struct → SoA + Arrow (no packets) | **`soatins`** alone | [`soatins/README.md`](soatins/README.md) |
+| Persist those Arrow tables as **Lance** | sister: nanolance | [nanolance](https://github.com/yoavbendor/nanolance) (see its "For AI agents") |
+| Persist those Arrow tables as **Parquet** | sister: nanoarrow2parquet | [nanoarrow2parquet](https://github.com/yoavbendor/nanoarrow2parquet) (see its "For AI agents") |
+| Add an app protocol with variable TLVs (e.g. LLDP) | nanotins **DPAR** | [examples/lldp](nanotins/examples/lldp) |
+
+Rules of thumb: decode **serially** (`dag_decode_packet`) unless you need the bulk path — it avoids the
+stdexec dependency and gives identical tables. Columns are scalars or fixed-size binary only; store
+variable-length data as offset+length+fixed-head. Don't expect reassembly or app-payload parsing beyond
+gPTP/SOME/IP. Full per-library guidance is in each sub-README's **"For AI agents"** section.
+
 ## Build & test
 
 ```bash

@@ -53,6 +53,29 @@ soatins::to_arrow(rows, arr, err);                     // hand to Lance / Parque
 All columns are emitted **REQUIRED** (non-nullable). For fixed-width columns the Arrow data buffer is the
 SoA column's own storage (zero-copy bulk append).
 
+## For AI agents
+
+**Use this library when** you have a fixed-shape, packed struct (wire-style fields) and want a
+columnar SoA store and an Arrow table from it, with one macro. It knows nothing about packets or storage.
+
+**Pick a different layer when:** you're parsing packets → use [`nanotins`](../nanotins) (it builds on
+soatins). You need variable-length values (strings, blobs, lists) in the table → soatins can't model
+those as columns; keep them out or store an offset+length+fixed-head snapshot.
+
+**Minimal program:** see the Quick start above — `BOOST_DESCRIBE_STRUCT` the struct, `soa<T>::store`,
+then `arrow_schema<T>()` + `to_arrow(soa, arr)`. CMake: `target_link_libraries(app PRIVATE soatins::core)`.
+
+**Do**
+- Put `BOOST_DESCRIBE_STRUCT(T, (), (f1, f2, ...))` on every row struct; the macro's field order is the
+  column order.
+- Use `be<>`/`le<>` for wire-endian integers, `bits<>` for packed bitfields, `std::array<uint8,N>` for
+  fixed binary, and `uint8` (not `bool`) for flags.
+
+**Don't**
+- Don't add string/`std::vector`/list/pointer fields — only the supported wire types become columns.
+- Don't assume nullable/nested-struct/dictionary support — those live in the storage backends
+  (nanolance / nanoarrow2parquet), not here.
+
 ## Gotchas & limits
 
 - **No variable-length columns.** Strings, byte blobs, and lists are *not* supported as columns — soatins

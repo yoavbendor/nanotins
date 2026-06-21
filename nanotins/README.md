@@ -63,6 +63,38 @@ For the full driver (scan → window → decode → write), read the reference c
 [`pcapng2parquet`](https://github.com/yoavbendor/nanoarrow2parquet/tree/main/examples/pcapng2parquet)
 (Parquet) — same parsing, different sink.
 
+## For AI agents
+
+**Use this library when** you need to turn pcap/pcapng packets into per-protocol columnar (Arrow)
+tables. It is parser-only — persist the tables with [nanolance](https://github.com/yoavbendor/nanolance)
+(Lance) or [nanoarrow2parquet](https://github.com/yoavbendor/nanoarrow2parquet) (Parquet).
+
+**Pick a different layer when:** you only need *describe a struct → SoA → Arrow* for your own
+fixed-shape records (no packets) → link [`soatins`](../soatins) alone. You need an app protocol with no
+fixed header (variable TLVs) → use **DPAR** (write a small parser; see the [LLDP example](../examples/lldp)),
+don't add a DAG node.
+
+**Minimal program** — serial decode, no stdexec (see the Quick start above for the call):
+include only `pcap_blocks.hpp` + `spec_dag.hpp` + `dag_decode.hpp`, loop `dag_decode_packet<G>(...)` per
+packet, then `to_arrow` each node table. For CMake, link `soatins::core` and add `nanotins/include` to
+your include path (this keeps stdexec out); link `nanotins` only if you want the parallel bulk path.
+
+**Do**
+- Decode with `dag_decode_packet` (serial) unless you specifically need the bulk path — it avoids the
+  stdexec dependency and produces identical tables.
+- Add a protocol by writing a `WireSpec` + a `spec_dag` node + the parent's dispatch edge — nothing else
+  (the table, bulk path, and Arrow mapping follow automatically).
+- Store variable-length data as `offset + length + std::array<uint8,N>` head snapshot (as the LLDP /
+  SOME/IP-SD rows do).
+- Expect a TCP/UDP row only when `frag_offset == 0` (first IPv4 fragment).
+
+**Don't**
+- Don't include any `*_bulk.hpp` / `bulk.hpp` header (or `add_subdirectory(nanotins)`) if you want to
+  avoid pulling stdexec — they include it unconditionally.
+- Don't try to make a column hold a string/list/blob — columns are scalars, `bits<>` fields, or
+  fixed-size binary only.
+- Don't expect reassembly, flow/state tracking, or app-payload parsing beyond gPTP/SOME/IP.
+
 ## Gotchas & things to know
 
 - **Columns are scalars or fixed-size binary.** A column is a `be<>/le<>` scalar, a `bits<>` field, or a

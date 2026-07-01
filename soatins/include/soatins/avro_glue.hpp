@@ -149,21 +149,30 @@ inline constexpr std::size_t avro_max_row_bytes =
 // independent blocks (row count + byte length + concatenated row encodings + a sync marker). Pairs
 // naturally with column_sink<T,N>: bind write_block as the flush callback and every full chunk becomes
 // one block, with the SoA's columns encoded directly, row-major, straight into the output stream --
-// no per-flush schema write, no reconstructing a T, and no per-row heap allocation (the scratch buffer
-// below is reserved once and reused, cleared rather than freed, across every block).
+// no per-flush schema write, no reconstructing a T, no per-row heap allocation (the block buffer below is
+// reserved once and reused, cleared rather than freed, across every block), and one write() syscall per
+// block (prefix + rows + sync in a single contiguous buffer, not four separate stream writes).
 //
 // No compression codec beyond "null": deflate/snappy would pull in an external codec dependency, which
 // is out of scope for a no-codegen reflection nucleus.
 
-inline void avro_write_zigzag(std::ostream& os, std::int64_t v) {
+// Encode a zigzag varint into `buf` (must have room for the 10-byte int64 worst case); returns the byte
+// count. The no-allocation building block both avro_write_zigzag (below) and write_block's in-place
+// length prefix use.
+inline int avro_zigzag_bytes(std::int64_t v, unsigned char* buf) {
     std::uint64_t z = (static_cast<std::uint64_t>(v) << 1) ^ static_cast<std::uint64_t>(v >> 63);
-    unsigned char buf[10];
     int n = 0;
     while (z > 0x7f) {
         buf[n++] = static_cast<unsigned char>((z & 0x7f) | 0x80);
         z >>= 7;
     }
     buf[n++] = static_cast<unsigned char>(z);
+    return n;
+}
+
+inline void avro_write_zigzag(std::ostream& os, std::int64_t v) {
+    unsigned char buf[10];
+    const int n = avro_zigzag_bytes(v, buf);
     os.write(reinterpret_cast<const char*>(buf), n);
 }
 
@@ -206,27 +215,47 @@ public:
     // is never called -- there is no row -- just s.column<I>()[i]), followed by the sync marker. A no-op
     // when count == 0 (e.g. column_sink::finish() draining an already-empty tail), so it's safe to bind
     // directly as a flush callback.
+    //
+    // The block's length prefix (an Avro long) can only be written once the encoded byte count is known,
+    // but that shouldn't cost a second buffer: block_ reserves `max_prefix` bytes of dead space up front,
+    // encodes rows starting right after it (so the -- usually much larger -- row payload is written into
+    // its final position exactly once, no copy/shift), then the two prefix varints are encoded backwards
+    // from the end of that gap. The result is one os_->write() per block covering prefix + rows + sync,
+    // instead of the four separate stream writes (and no extra buffer) a naive version would need.
     template <class Soa>
     void write_block(const Soa& s, std::size_t count) {
         if (count == 0) {
             return;
         }
-        scratch_.clear();
-        scratch_.reserve(count * avro_max_row_bytes<T>);
+        block_.clear();
+        block_.reserve(max_prefix + count * avro_max_row_bytes<T> + sync_.size());
+        block_.resize(max_prefix, 0);  // dead space for the count/length prefix, filled in below
         for (std::size_t i = 0; i < count; ++i) {
             for_each_column<T>(
-                [&]<std::size_t I, class Col>() { avro_append_value(scratch_, s.template column<I>()[i]); });
+                [&]<std::size_t I, class Col>() { avro_append_value(block_, s.template column<I>()[i]); });
         }
-        avro_write_zigzag(*os_, static_cast<std::int64_t>(count));
-        avro_write_zigzag(*os_, static_cast<std::int64_t>(scratch_.size()));
-        os_->write(reinterpret_cast<const char*>(scratch_.data()), static_cast<std::streamsize>(scratch_.size()));
-        os_->write(reinterpret_cast<const char*>(sync_.data()), static_cast<std::streamsize>(sync_.size()));
+        const std::size_t rows_bytes = block_.size() - max_prefix;
+        block_.insert(block_.end(), sync_.begin(), sync_.end());
+
+        unsigned char count_buf[10];
+        unsigned char len_buf[10];
+        const int count_n = avro_zigzag_bytes(static_cast<std::int64_t>(count), count_buf);
+        const int len_n = avro_zigzag_bytes(static_cast<std::int64_t>(rows_bytes), len_buf);
+        const std::size_t prefix_start = max_prefix - static_cast<std::size_t>(count_n + len_n);
+        std::memcpy(block_.data() + prefix_start, count_buf, static_cast<std::size_t>(count_n));
+        std::memcpy(block_.data() + prefix_start + count_n, len_buf, static_cast<std::size_t>(len_n));
+
+        os_->write(reinterpret_cast<const char*>(block_.data() + prefix_start),
+                   static_cast<std::streamsize>(block_.size() - prefix_start));
     }
 
 private:
+    // Two zigzag int64 varints, worst case 10 bytes each: the max count+length prefix write_block needs.
+    static constexpr std::size_t max_prefix = 20;
+
     std::ostream* os_;
     std::array<std::uint8_t, 16> sync_{};
-    std::vector<std::uint8_t> scratch_;  // reused across blocks: cleared, never freed
+    std::vector<std::uint8_t> block_;  // reused across blocks: cleared, never freed
 };
 
 }  // namespace soatins

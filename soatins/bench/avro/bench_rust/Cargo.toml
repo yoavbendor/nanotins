@@ -1,0 +1,15 @@
+[package]
+name = "bench_rust"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bench_rust"
+path = "src/main.rs"
+
+[dependencies]
+apache-avro = "0.21"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = 3

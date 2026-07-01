@@ -17,8 +17,11 @@
 
 #include "soatins/reflect.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <ostream>
+#include <random>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -114,5 +117,116 @@ std::vector<std::uint8_t> to_avro_bytes(const T& row) {
     for_each_column<T>([&]<std::size_t I, class Col>() { avro_append_value(out, Col::get(row)); });
     return out;
 }
+
+// Conservative per-column upper bound on encoded size, so a batch encode can reserve once instead of
+// growing on every row: 1 byte for bool, 4/8 for float/double, sizeof(N) for a fixed array, and a zigzag
+// varint's worst case (ceil(bits/7) + 1 sign byte) for int/long.
+template <class Elem>
+constexpr std::size_t avro_max_value_bytes() {
+    if constexpr (std::is_same_v<Elem, bool>) {
+        return 1;
+    } else if constexpr (std::is_same_v<Elem, float>) {
+        return 4;
+    } else if constexpr (std::is_same_v<Elem, double>) {
+        return 8;
+    } else if constexpr (std::is_signed_v<Elem> || std::is_unsigned_v<Elem>) {
+        return sizeof(Elem) == 1 ? 2 : sizeof(Elem) == 2 ? 3 : sizeof(Elem) == 4 ? 5 : 10;
+    } else {
+        return sizeof(Elem);  // std::array<uint8_t, N> fixed
+    }
+}
+template <class T, std::size_t... I>
+constexpr std::size_t avro_max_row_bytes_impl(std::index_sequence<I...>) {
+    return (avro_max_value_bytes<typename col_at<T, I>::elem>() + ... + std::size_t{0});
+}
+template <class T>
+inline constexpr std::size_t avro_max_row_bytes =
+    avro_max_row_bytes_impl<T>(std::make_index_sequence<column_count<T>>{});
+
+// ---- Object Container File (OCF): stream many rows without resending the schema -------------------
+//
+// Avro's own container format: the schema is written ONCE in a file header, then data streams as
+// independent blocks (row count + byte length + concatenated row encodings + a sync marker). Pairs
+// naturally with column_sink<T,N>: bind write_block as the flush callback and every full chunk becomes
+// one block, with the SoA's columns encoded directly, row-major, straight into the output stream --
+// no per-flush schema write, no reconstructing a T, and no per-row heap allocation (the scratch buffer
+// below is reserved once and reused, cleared rather than freed, across every block).
+//
+// No compression codec beyond "null": deflate/snappy would pull in an external codec dependency, which
+// is out of scope for a no-codegen reflection nucleus.
+
+inline void avro_write_zigzag(std::ostream& os, std::int64_t v) {
+    std::uint64_t z = (static_cast<std::uint64_t>(v) << 1) ^ static_cast<std::uint64_t>(v >> 63);
+    unsigned char buf[10];
+    int n = 0;
+    while (z > 0x7f) {
+        buf[n++] = static_cast<unsigned char>((z & 0x7f) | 0x80);
+        z >>= 7;
+    }
+    buf[n++] = static_cast<unsigned char>(z);
+    os.write(reinterpret_cast<const char*>(buf), n);
+}
+
+inline void avro_write_string(std::ostream& os, const std::string& s) {
+    avro_write_zigzag(os, static_cast<std::int64_t>(s.size()));
+    os.write(s.data(), static_cast<std::streamsize>(s.size()));
+}
+
+template <class T>
+void avro_ocf_write_header(std::ostream& os, const std::string& record_name,
+                            const std::array<std::uint8_t, 16>& sync) {
+    static constexpr char magic[4] = {'O', 'b', 'j', '\x01'};
+    os.write(magic, 4);
+    avro_write_zigzag(os, 2);  // two metadata entries: avro.schema, avro.codec
+    avro_write_string(os, "avro.schema");
+    avro_write_string(os, avro_schema_json<T>(record_name));
+    avro_write_string(os, "avro.codec");
+    avro_write_string(os, "null");
+    avro_write_zigzag(os, 0);  // terminate the metadata map
+    os.write(reinterpret_cast<const char*>(sync.data()), static_cast<std::streamsize>(sync.size()));
+}
+
+template <class T>
+class avro_ocf_writer {
+public:
+    // Writes the OCF header (magic + schema + codec + a fresh random sync marker) immediately -- the one
+    // and only schema write for the whole file, however many blocks follow.
+    avro_ocf_writer(std::ostream& os, const std::string& record_name) : os_(&os) {
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<int> dist(0, 255);
+        for (auto& b : sync_) {
+            b = static_cast<std::uint8_t>(dist(gen));
+        }
+        avro_ocf_write_header<T>(*os_, record_name, sync_);
+    }
+
+    // Encode rows [0, count) of a soa<T, N-or-dynamic> as one data block and append it to the stream:
+    // count, byte length, then each row's columns encoded in place straight from the SoA (Col::get(row)
+    // is never called -- there is no row -- just s.column<I>()[i]), followed by the sync marker. A no-op
+    // when count == 0 (e.g. column_sink::finish() draining an already-empty tail), so it's safe to bind
+    // directly as a flush callback.
+    template <class Soa>
+    void write_block(const Soa& s, std::size_t count) {
+        if (count == 0) {
+            return;
+        }
+        scratch_.clear();
+        scratch_.reserve(count * avro_max_row_bytes<T>);
+        for (std::size_t i = 0; i < count; ++i) {
+            for_each_column<T>(
+                [&]<std::size_t I, class Col>() { avro_append_value(scratch_, s.template column<I>()[i]); });
+        }
+        avro_write_zigzag(*os_, static_cast<std::int64_t>(count));
+        avro_write_zigzag(*os_, static_cast<std::int64_t>(scratch_.size()));
+        os_->write(reinterpret_cast<const char*>(scratch_.data()), static_cast<std::streamsize>(scratch_.size()));
+        os_->write(reinterpret_cast<const char*>(sync_.data()), static_cast<std::streamsize>(sync_.size()));
+    }
+
+private:
+    std::ostream* os_;
+    std::array<std::uint8_t, 16> sync_{};
+    std::vector<std::uint8_t> scratch_;  // reused across blocks: cleared, never freed
+};
 
 }  // namespace soatins

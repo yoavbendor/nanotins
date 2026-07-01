@@ -97,4 +97,31 @@ if(SOATINS_BUILD_TESTS)
     target_link_libraries(soatins_column_sink PRIVATE soatins_core)
     add_test(NAME soatins_column_sink COMMAND $<TARGET_FILE:soatins_column_sink>)
     set_tests_properties(soatins_column_sink PROPERTIES LABELS "smoke")
+
+    # avro_glue golden test: cross-checks the reflection-driven Avro encoder against fastavro (a real,
+    # independent Avro client), not just our own reader. Skips (rather than fails) when python3/fastavro
+    # aren't available, since it's an external-interop check, not a build-correctness one.
+    add_executable(soatins_gen_avro_golden tests/gen_avro_golden.cpp)
+    target_link_libraries(soatins_gen_avro_golden PRIVATE soatins_core)
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    set(_soa_have_fastavro FALSE)
+    if(Python3_Interpreter_FOUND)
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import fastavro"
+            RESULT_VARIABLE _soa_fastavro_rc
+            OUTPUT_QUIET ERROR_QUIET)
+        if(_soa_fastavro_rc EQUAL 0)
+            set(_soa_have_fastavro TRUE)
+        endif()
+    endif()
+
+    if(_soa_have_fastavro)
+        add_test(NAME soatins_avro_golden
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_avro_golden.py"
+                    "$<TARGET_FILE:soatins_gen_avro_golden>" "${CMAKE_CURRENT_BINARY_DIR}/avro_golden")
+        set_tests_properties(soatins_avro_golden PROPERTIES LABELS "smoke")
+    else()
+        message(STATUS "soatins: skipping soatins_avro_golden test (needs python3 + `pip install fastavro`)")
+    endif()
 endif()

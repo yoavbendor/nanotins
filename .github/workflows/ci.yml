@@ -28,6 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build ${{ matrix.compiler.cxx }}
+          pip install fastavro
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DNANOTINS_SUITE_BUILD_TESTS=ON
